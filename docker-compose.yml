@@ -1,0 +1,132 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: creaditn-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: creaditn
+      MYSQL_USER: ${DB_USER:-creaditn}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-creaditnpass}
+    ports:
+      - "${DB_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/db/initial-data.sql:/docker-entrypoint-initdb.d/01-initial-data.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./creadiTn
+      dockerfile: Dockerfile
+    container_name: creaditn-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/creaditn?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-creaditn}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-creaditnpass}
+      JWT_SECRET: ${JWT_SECRET:-creaditn-super-secret-jwt-key-2026-at-least-32chars}
+      JWT_EXPIRATION: 86400000
+      APP_UPLOAD_DIR: /app/uploads
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-true}
+      MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_SMTP_STARTTLS_ENABLE:-true}
+      MAIL_SMTP_STARTTLS_REQUIRED: ${MAIL_SMTP_STARTTLS_REQUIRED:-true}
+      MAIL_SMTP_SSL_TRUST: ${MAIL_SMTP_SSL_TRUST:-smtp.gmail.com}
+      MAIL_FROM: ${MAIL_FROM:-}
+      ADMIN_NOTIFICATION_EMAIL: ${ADMIN_NOTIFICATION_EMAIL:-admin@bnpl.com}
+      ADMIN_NOTIFICATION_EMAIL_ENABLED: ${ADMIN_NOTIFICATION_EMAIL_ENABLED:-false}
+      APP_SOCKET_SERVER_URL: http://socket-server:3001
+      APP_SOCKET_EMIT_SECRET: ${SOCKET_EMIT_SECRET:-creaditn-socket-secret-2026}
+      APP_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@bnpl.com}
+      APP_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      APP_CREDIT_MAX_PER_USER: ${APP_CREDIT_MAX_PER_USER:-2000}
+      APP_DEV_RESET_ENABLED: ${APP_DEV_RESET_ENABLED:-false}
+      APP_DEV_RESET_TOKEN: ${APP_DEV_RESET_TOKEN:-}
+      DIDIT_API_KEY: ${DIDIT_API_KEY:-}
+      DIDIT_API_URL: ${DIDIT_API_URL:-https://verification.didit.me/v3}
+      DIDIT_FALLBACK_ON_ERROR: ${DIDIT_FALLBACK_ON_ERROR:-false}
+      KYC_FACE_MATCH_THRESHOLD: ${KYC_FACE_MATCH_THRESHOLD:-0.75}
+      KYC_FACE_MATCH_MANUAL_REVIEW_THRESHOLD: ${KYC_FACE_MATCH_MANUAL_REVIEW_THRESHOLD:-0.70}
+      KYC_LIVENESS_THRESHOLD: ${KYC_LIVENESS_THRESHOLD:-0.70}
+      KYC_LIVENESS_MANUAL_REVIEW_THRESHOLD: ${KYC_LIVENESS_MANUAL_REVIEW_THRESHOLD:-0.65}
+      KYC_PROVIDER_CONFIDENCE_THRESHOLD: ${KYC_PROVIDER_CONFIDENCE_THRESHOLD:-0.75}
+      KYC_PROVIDER_CONFIDENCE_MANUAL_REVIEW_THRESHOLD: ${KYC_PROVIDER_CONFIDENCE_MANUAL_REVIEW_THRESHOLD:-0.70}
+      KYC_MAX_IMAGE_BYTES: ${KYC_MAX_IMAGE_BYTES:-5242880}
+      KYC_ALLOWED_MIME_TYPES: ${KYC_ALLOWED_MIME_TYPES:-image/jpeg,image/png,image/webp}
+      KYC_IDENTITY_LOCK_INCLUDE_DELETED: ${KYC_IDENTITY_LOCK_INCLUDE_DELETED:-true}
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/api/users/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  phpmyadmin:
+    image: phpmyadmin:5.2
+    container_name: creaditn-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PHPMYADMIN_PORT:-8081}:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USER:-creaditn}
+      PMA_PASSWORD: ${DB_PASSWORD:-creaditnpass}
+
+  socket-server:
+    build:
+      context: ./socket-server
+      dockerfile: Dockerfile
+    container_name: creaditn-socket
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      SOCKET_PORT: 3001
+      SOCKET_EMIT_SECRET: ${SOCKET_EMIT_SECRET:-creaditn-socket-secret-2026}
+      SOCKET_DEBUG: ${SOCKET_DEBUG:-false}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  dashboard:
+    build:
+      context: ./Dashboard_client-main
+      dockerfile: Dockerfile
+    container_name: creaditn-dashboard
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - socket-server
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:8082
+      NEXT_PUBLIC_API_URL: /api/backend
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:3001
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-only-secret-change-me}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+volumes:
+  mysql_data:
+  uploads_data:

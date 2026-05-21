@@ -1,0 +1,48 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@700;800&display=swap");
+
+:root {
+  color-scheme: dark;
+
+  --background: oklch(12% 0.035 260);
+  --card: oklch(21% 0.045 260 / 0.66);
+  --primary: oklch(63% 0.22 292);
+  --primary-foreground: oklch(98% 0.004 260);
+  --success: oklch(75% 0.16 165);
+  --warning: oklch(78% 0.15 76);
+  --destructive: oklch(68% 0.18 25);
+  --foreground: oklch(97% 0.006 260);
+  --muted-foreground: oklch(73% 0.025 260);
+  --border: oklch(100% 0 0 / 0.1);
+  --ring: oklch(70% 0.2 292 / 0.42);
+
+  --surface: oklch(24% 0.045 260 / 0.48);
+  --surface-strong: oklch(28% 0.055 260 / 0.72);
+  --primary-soft: oklch(63% 0.22 292 / 0.14);
+  --primary-border: oklch(63% 0.22 292 / 0.42);
+  --success-soft: oklch(75% 0.16 165 / 0.14);
+  --success-border: oklch(75% 0.16 165 / 0.28);
+  --warning-soft: oklch(78% 0.15 76 / 0.13);
+  --warning-border: oklch(78% 0.15 76 / 0.25);
+  --destructive-soft: oklch(68% 0.18 25 / 0.13);
+  --destructive-border: oklch(68% 0.18 25 / 0.26);
+  --foreground-soft: oklch(100% 0 0 / 0.08);
+  --foreground-strong: oklch(100% 0 0);
+  --nav-glass: oklch(20% 0.045 260 / 0.8);
+  --shadow: oklch(0% 0 0 / 0.34);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+  background:
+    radial-gradient(circle at 0% 0%, oklch(58% 0.22 303 / 0.22), transparent 34rem),
+    radial-gradient(circle at 100% 0%, oklch(73% 0.14 185 / 0.16), transparent 30rem),
+    var(--background);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
