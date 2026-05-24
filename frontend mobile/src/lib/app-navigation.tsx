@@ -23,7 +23,6 @@ export type AppRoute =
   | "FinancialProfile"
   | "PaymentHistory"
   | "Notifications"
-  | "QRScanner"
   | "NotFound";
 
 interface AppNavigationValue {

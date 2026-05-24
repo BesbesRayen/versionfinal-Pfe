@@ -9,6 +9,7 @@ import com.creaditn.creaditnbackend.entity.CreditRequest;
 import com.creaditn.creaditnbackend.service.CreditService;
 import com.creaditn.creaditnbackend.service.InstallmentService;
 import com.creaditn.creaditnbackend.service.KycService;
+import com.creaditn.creaditnbackend.service.PaymentService;
 import com.creaditn.creaditnbackend.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class AdminController {
     private final KycService kycService;
     private final CreditService creditService;
     private final InstallmentService installmentService;
+    private final PaymentService paymentService;
     private final UserRepository userRepository;
     private final CreditRequestRepository creditRequestRepository;
     private final InstallmentRepository installmentRepository;
@@ -103,6 +105,11 @@ public class AdminController {
     @GetMapping("/installments")
     public ResponseEntity<List<InstallmentDto>> getAllInstallments() {
         return ResponseEntity.ok(installmentService.getAllInstallments());
+    }
+
+    @PostMapping("/users/{id}/collect-debt")
+    public ResponseEntity<PayAllResponse> collectUserDebt(@PathVariable Long id) {
+        return ResponseEntity.ok(paymentService.collectOutstandingInstallmentsForAdmin(id));
     }
 
     // ---- Users ----

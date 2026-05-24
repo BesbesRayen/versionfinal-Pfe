@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import MobileLayout from "@/components/MobileLayout";
 import { recoverEmail, revealRecoveredEmail, updateRecoveredEmail } from "@/lib/api";
@@ -19,9 +19,13 @@ const ForgotEmail = () => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const clearError = () => {
+    if (errorMessage) setErrorMessage("");
+  };
+
   const handleRecover = async () => {
     if (!identifier.trim() || !password.trim()) {
-      setErrorMessage("Entrez votre telephone ou nom utilisateur et votre mot de passe.");
+      setErrorMessage("Enter your username and password.");
       return;
     }
 
@@ -32,14 +36,11 @@ const ForgotEmail = () => {
     setRecoveryToken("");
 
     try {
-      const response = await recoverEmail({
-        identifier: identifier.trim(),
-        password,
-      });
+      const response = await recoverEmail({ identifier: identifier.trim(), password });
       setMaskedEmail(response.data?.maskedEmail ?? "");
       setRecoveryToken(response.data?.recoveryToken ?? "");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Impossible de verifier ces informations.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to verify this account.");
     } finally {
       setLoading(false);
     }
@@ -53,7 +54,7 @@ const ForgotEmail = () => {
       const response = await revealRecoveredEmail(recoveryToken);
       setFullEmail(response.data?.email ?? "");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Impossible d'afficher l'email complet.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to show the full email.");
     } finally {
       setLoading(false);
     }
@@ -61,7 +62,7 @@ const ForgotEmail = () => {
 
   const handleUpdateEmail = async () => {
     if (!recoveryToken || !newEmail.trim()) {
-      setErrorMessage("Entrez le nouvel email.");
+      setErrorMessage("Enter the new email.");
       return;
     }
 
@@ -69,10 +70,9 @@ const ForgotEmail = () => {
     setErrorMessage("");
     try {
       const response = await updateRecoveredEmail(recoveryToken, newEmail.trim());
-      const updatedEmail = response.data?.email ?? newEmail.trim();
-      navigate("EmailVerification", { email: updatedEmail });
+      navigate("EmailVerification", { email: response.data?.email ?? newEmail.trim() });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Impossible de modifier l'email.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update the email.");
     } finally {
       setLoading(false);
     }
@@ -81,25 +81,32 @@ const ForgotEmail = () => {
   return (
     <MobileLayout>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => navigate("Login")} style={styles.backRow}>
-          <MaterialCommunityIcons name="arrow-left" size={20} color={colors.primary} />
-          <Text style={styles.backText}>Connexion</Text>
+        <Pressable onPress={() => navigate("Login")} style={styles.backButton}>
+          <MaterialCommunityIcons name="arrow-left" size={18} color={colors.gray700} />
         </Pressable>
 
-        <View>
+        <View style={styles.hero}>
+          <View style={styles.heroIcon}>
+            <MaterialCommunityIcons name="email-search-outline" size={28} color={colors.white} />
+          </View>
           <Text style={styles.title}>Email oublie</Text>
           <Text style={styles.subtitle}>
-            Verifiez votre identite avec votre telephone ou nom utilisateur et votre mot de passe.
+            Verifiez votre identite avec votre nom utilisateur et votre mot de passe.
           </Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>TELEPHONE OU NOM UTILISATEUR</Text>
+        <View style={styles.panel}>
+          <View style={styles.securityStrip}>
+            <MaterialCommunityIcons name="shield-lock-outline" size={18} color={colors.success} />
+            <Text style={styles.securityText}>Vos informations restent masquees jusqu'a verification.</Text>
+          </View>
+
+          <Text style={styles.label}>NOM UTILISATEUR</Text>
           <TextInput
             value={identifier}
-            onChangeText={setIdentifier}
+            onChangeText={(value) => { setIdentifier(value); clearError(); }}
             style={styles.input}
-            placeholder="Ex: 20000000 ou rayen"
+            placeholder="ex: rayen"
             placeholderTextColor={colors.gray400}
             autoCapitalize="none"
           />
@@ -108,63 +115,65 @@ const ForgotEmail = () => {
           <View style={styles.passwordWrap}>
             <TextInput
               value={password}
-              onChangeText={setPassword}
+              onChangeText={(value) => { setPassword(value); clearError(); }}
               style={styles.passwordInput}
               placeholder="Votre mot de passe"
               placeholderTextColor={colors.gray400}
               secureTextEntry={!showPassword}
               autoCapitalize="none"
             />
-            <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeBtn}>
-              <MaterialCommunityIcons name={showPassword ? "eye-off" : "eye"} size={18} color={colors.gray400} />
+            <Pressable onPress={() => setShowPassword((value) => !value)} style={styles.eyeButton}>
+              <MaterialCommunityIcons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.gray500} />
             </Pressable>
           </View>
 
           <Pressable style={[styles.primaryButton, loading && styles.disabled]} onPress={handleRecover} disabled={loading}>
-            <Text style={styles.primaryText}>{loading ? "Verification..." : "Verifier mon compte"}</Text>
+            {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryText}>Verifier mon compte</Text>}
           </Pressable>
         </View>
 
         {!!maskedEmail && (
           <View style={styles.resultCard}>
-            <MaterialCommunityIcons name="shield-check-outline" size={22} color={colors.success} />
-            <View style={{ flex: 1 }}>
+            <View style={styles.resultIcon}>
+              <MaterialCommunityIcons name="check" size={22} color={colors.background} />
+            </View>
+            <View style={styles.resultBody}>
               <Text style={styles.resultLabel}>Email associe</Text>
               <Text style={styles.emailText}>{fullEmail || maskedEmail}</Text>
-              {!fullEmail && (
-                <View style={styles.resultActions}>
-                  <Pressable style={styles.revealButton} onPress={handleReveal} disabled={loading}>
-                    <Text style={styles.revealText}>Afficher l'email complet</Text>
+
+              <View style={styles.resultActions}>
+                {!fullEmail && (
+                  <Pressable style={styles.actionButton} onPress={handleReveal} disabled={loading}>
+                    <MaterialCommunityIcons name="eye-outline" size={16} color={colors.primary} />
+                    <Text style={styles.actionText}>Afficher</Text>
                   </Pressable>
-                  <Pressable style={styles.revealButton} onPress={() => setEditingEmail((value) => !value)} disabled={loading}>
-                    <Text style={styles.revealText}>Modifier cet email</Text>
+                )}
+                <Pressable style={styles.actionButton} onPress={() => setEditingEmail((value) => !value)} disabled={loading}>
+                  <MaterialCommunityIcons name="email-edit-outline" size={16} color={colors.primary} />
+                  <Text style={styles.actionText}>Modifier</Text>
+                </Pressable>
+                {!!fullEmail && (
+                  <Pressable style={styles.actionButton} onPress={() => navigate("Login")}>
+                    <MaterialCommunityIcons name="login" size={16} color={colors.primary} />
+                    <Text style={styles.actionText}>Connexion</Text>
                   </Pressable>
-                </View>
-              )}
-              {!!fullEmail && (
-                <View style={styles.resultActions}>
-                  <Pressable style={styles.revealButton} onPress={() => navigate("Login")}>
-                    <Text style={styles.revealText}>Continuer vers la connexion</Text>
-                  </Pressable>
-                  <Pressable style={styles.revealButton} onPress={() => setEditingEmail((value) => !value)} disabled={loading}>
-                    <Text style={styles.revealText}>Modifier cet email</Text>
-                  </Pressable>
-                </View>
-              )}
+                )}
+              </View>
+
               {editingEmail && (
                 <View style={styles.editBox}>
-                  <Text style={styles.editLabel}>NOUVEL EMAIL</Text>
+                  <Text style={styles.label}>NOUVEL EMAIL</Text>
                   <TextInput
                     value={newEmail}
-                    onChangeText={setNewEmail}
-                    style={styles.editInput}
+                    onChangeText={(value) => { setNewEmail(value); clearError(); }}
+                    style={styles.input}
                     placeholder="nouvel@email.com"
                     placeholderTextColor={colors.gray400}
                     autoCapitalize="none"
                     keyboardType="email-address"
                   />
                   <Pressable style={[styles.updateButton, loading && styles.disabled]} onPress={handleUpdateEmail} disabled={loading}>
-                    <Text style={styles.updateText}>{loading ? "Modification..." : "Enregistrer et verifier"}</Text>
+                    {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.updateText}>Enregistrer et verifier</Text>}
                   </Pressable>
                 </View>
               )}
@@ -173,8 +182,8 @@ const ForgotEmail = () => {
         )}
 
         {!!errorMessage && (
-          <View style={styles.errorRow}>
-            <MaterialCommunityIcons name="alert-circle-outline" size={14} color={colors.error} />
+          <View style={styles.errorBox}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={16} color={colors.error} />
             <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         )}
@@ -184,91 +193,78 @@ const ForgotEmail = () => {
 };
 
 const styles = StyleSheet.create({
-  content: { paddingVertical: 28, gap: 16 },
-  backRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  backText: { color: colors.primary, fontWeight: "700", fontSize: 14 },
-  title: { fontSize: 26, fontWeight: "800", color: colors.gray900 },
-  subtitle: { marginTop: 8, fontSize: 13, color: colors.gray500, lineHeight: 20 },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radii.xxl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    padding: 16,
-    gap: 10,
+  content: { paddingVertical: 24, gap: 18 },
+  backButton: {
+    width: 42, height: 42, borderRadius: radii.lg,
+    borderWidth: 1, borderColor: colors.cardBorder,
+    backgroundColor: colors.surface, alignItems: "center", justifyContent: "center",
   },
-  label: { fontSize: 11, color: colors.gray500, fontWeight: "700", letterSpacing: 0.5 },
+  hero: { gap: 10 },
+  heroIcon: {
+    width: 58, height: 58, borderRadius: 18,
+    backgroundColor: colors.primary, alignItems: "center", justifyContent: "center",
+  },
+  title: { fontSize: 28, fontWeight: "900", color: colors.gray900 },
+  subtitle: { fontSize: 14, color: colors.gray500, lineHeight: 21 },
+  panel: {
+    backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder,
+    borderRadius: radii.xxl, padding: 18, gap: 12,
+  },
+  securityStrip: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    borderWidth: 1, borderColor: colors.successBorder,
+    backgroundColor: colors.successSoft, borderRadius: radii.lg, padding: 11,
+  },
+  securityText: { flex: 1, color: colors.success, fontSize: 12, fontWeight: "700", lineHeight: 17 },
+  label: { fontSize: 10, fontWeight: "900", letterSpacing: 1, color: colors.gray500 },
   input: {
-    borderWidth: 1,
-    borderColor: colors.gray300,
-    borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    backgroundColor: colors.gray50,
-    color: colors.gray900,
-    fontSize: 15,
+    borderWidth: 1, borderColor: colors.gray300, backgroundColor: colors.surface,
+    borderRadius: radii.lg, paddingHorizontal: 14, paddingVertical: 13,
+    color: colors.gray900, fontSize: 15,
   },
   passwordWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.gray300,
-    borderRadius: radii.lg,
-    backgroundColor: colors.gray50,
+    flexDirection: "row", alignItems: "center", borderWidth: 1,
+    borderColor: colors.gray300, backgroundColor: colors.surface, borderRadius: radii.lg,
   },
-  passwordInput: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    color: colors.gray900,
-    fontSize: 15,
-  },
-  eyeBtn: { padding: 10 },
+  passwordInput: { flex: 1, paddingHorizontal: 14, paddingVertical: 13, color: colors.gray900, fontSize: 15 },
+  eyeButton: { width: 46, alignItems: "center", justifyContent: "center" },
   primaryButton: {
-    marginTop: 4,
-    backgroundColor: colors.primary,
-    borderRadius: radii.lg,
-    alignItems: "center",
-    paddingVertical: 14,
+    minHeight: 50, borderRadius: radii.lg, backgroundColor: colors.primary,
+    alignItems: "center", justifyContent: "center", marginTop: 4,
   },
-  primaryText: { color: colors.white, fontWeight: "700", fontSize: 15 },
-  disabled: { opacity: 0.5 },
+  primaryText: { color: colors.white, fontSize: 14, fontWeight: "900" },
+  disabled: { opacity: 0.55 },
   resultCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: colors.successLight,
-    borderWidth: 1,
-    borderColor: colors.success,
-    borderRadius: radii.lg,
-    padding: 14,
+    flexDirection: "row", gap: 12,
+    borderWidth: 1, borderColor: colors.successBorder,
+    backgroundColor: colors.successSoft, borderRadius: radii.xxl, padding: 16,
   },
-  resultLabel: { color: colors.success, fontSize: 11, fontWeight: "800" },
-  emailText: { color: colors.gray900, fontSize: 16, fontWeight: "900", marginTop: 3 },
-  revealButton: { marginTop: 10, alignSelf: "flex-start" },
-  revealText: { color: colors.primary, fontSize: 13, fontWeight: "800" },
-  resultActions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  editBox: { marginTop: 12, gap: 8 },
-  editLabel: { fontSize: 10, color: colors.gray500, fontWeight: "800", letterSpacing: 0.5 },
-  editInput: {
-    borderWidth: 1,
-    borderColor: colors.gray300,
-    borderRadius: radii.lg,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: colors.gray50,
-    color: colors.gray900,
-    fontSize: 14,
+  resultIcon: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: colors.success, alignItems: "center", justifyContent: "center",
   },
+  resultBody: { flex: 1, gap: 8 },
+  resultLabel: { color: colors.success, fontSize: 11, fontWeight: "900", letterSpacing: 0.8 },
+  emailText: { color: colors.gray900, fontSize: 18, fontWeight: "900" },
+  resultActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  actionButton: {
+    flexDirection: "row", alignItems: "center", gap: 5,
+    borderWidth: 1, borderColor: colors.primaryBorder,
+    backgroundColor: colors.primaryLight, borderRadius: radii.full,
+    paddingHorizontal: 10, paddingVertical: 8,
+  },
+  actionText: { color: colors.primary, fontSize: 12, fontWeight: "900" },
+  editBox: { marginTop: 6, gap: 10 },
   updateButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-    alignItems: "center",
-    paddingVertical: 11,
+    minHeight: 46, borderRadius: radii.lg, backgroundColor: colors.primary,
+    alignItems: "center", justifyContent: "center",
   },
-  updateText: { color: colors.white, fontSize: 13, fontWeight: "800" },
-  errorRow: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
-  errorText: { flex: 1, fontSize: 12, color: colors.error },
+  updateText: { color: colors.white, fontSize: 13, fontWeight: "900" },
+  errorBox: {
+    flexDirection: "row", gap: 8, borderWidth: 1, borderColor: colors.errorBorder,
+    backgroundColor: colors.errorLight, borderRadius: radii.lg, padding: 12,
+  },
+  errorText: { flex: 1, color: colors.error, fontSize: 12, fontWeight: "700", lineHeight: 18 },
 });
 
 export default ForgotEmail;

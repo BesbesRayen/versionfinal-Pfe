@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
-import QRModal from '@/components/QRModal';
+import MobileAccessModal from '@/components/MobileAccessModal';
 
 interface PopularProduct {
   id: number;
@@ -29,7 +29,7 @@ const CATEGORY_MARK: Record<string, string> = {
 export default function PopularProductsReel() {
   const [products, setProducts] = useState<PopularProduct[]>([]);
   const [loading, setLoading] = useState(true);
-  const [qrModal, setQrModal] = useState<{ open: boolean; link: string; name: string }>({
+  const [mobileModal, setMobileModal] = useState<{ open: boolean; link: string; name: string }>({
     open: false,
     link: '',
     name: '',
@@ -48,13 +48,13 @@ export default function PopularProductsReel() {
     scrollRef.current?.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
   };
 
-  const openQR = (product: PopularProduct) => {
+  const openMobileAccess = (product: PopularProduct) => {
     const params = new URLSearchParams({
       articleId: String(product.id),
       shopName: product.boutiqueName,
     });
     const link = `creditn://product?${params.toString()}`;
-    setQrModal({ open: true, link, name: product.productName });
+    setMobileModal({ open: true, link, name: product.productName });
   };
 
   if (!loading && products.length === 0) return null;
@@ -112,18 +112,18 @@ export default function PopularProductsReel() {
               <ProductReelCard
                 key={product.id}
                 product={product}
-                onBuy={() => openQR(product)}
+                onBuy={() => openMobileAccess(product)}
               />
             ))}
           </div>
         )}
       </div>
 
-      <QRModal
-        isOpen={qrModal.open}
-        onClose={() => setQrModal((s) => ({ ...s, open: false }))}
-        deepLink={qrModal.link}
-        productName={qrModal.name}
+      <MobileAccessModal
+        isOpen={mobileModal.open}
+        onClose={() => setMobileModal((s) => ({ ...s, open: false }))}
+        deepLink={mobileModal.link}
+        title={mobileModal.name}
       />
     </section>
   );

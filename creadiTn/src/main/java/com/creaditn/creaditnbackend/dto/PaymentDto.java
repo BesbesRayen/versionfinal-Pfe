@@ -15,4 +15,10 @@ public class PaymentDto {
     private String transactionReference;
     private String paymentMethod;
     private LocalDateTime paidAt;
+    private String productName;
+    private String receiptNumber;
+    private String receiptDownloadUrl;
+    private String status;
+    private Integer installmentNumber;
+    private Boolean automaticPayment;
 }

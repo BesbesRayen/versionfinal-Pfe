@@ -353,9 +353,44 @@ public class KycService {
                     || normalizeForMatch(result.getExtractedLastName()).contains(normalizeForMatch(user.getLastName()))
                     || normalizeForMatch(user.getLastName()).contains(normalizeForMatch(result.getExtractedLastName()));
             if (!firstNameMatch || !lastNameMatch) {
+                if (hasPassingBiometricApproval(result)) {
+                    result.setProviderReason(appendProviderReason(
+                            result.getProviderReason(),
+                            "Account name differs from document name, but Didit biometric checks passed"
+                    ));
+                    return;
+                }
                 markManualReview(result, "Identity mismatch: document name does not match account name");
             }
         }
+    }
+
+    private boolean hasPassingBiometricApproval(KycVerificationResultDto result) {
+        return result.getStatus() != KycStatus.REJECTED
+                && Boolean.TRUE.equals(result.getDocumentAuthentic())
+                && Boolean.TRUE.equals(result.getFaceMatched())
+                && Boolean.TRUE.equals(result.getLivenessPassed())
+                && !Boolean.TRUE.equals(result.getSpoofDetected())
+                && normalizeScore(result.getFaceMatchScore()) >= 0.75
+                && normalizeScore(result.getLivenessScore()) >= 0.70
+                && normalizeScore(result.getProviderConfidence()) >= 0.75;
+    }
+
+    private double normalizeScore(Double value) {
+        if (value == null) {
+            return 0.0;
+        }
+        return value > 1.0 ? value / 100.0 : value;
+    }
+
+    private String appendProviderReason(String currentReason, String warning) {
+        if (currentReason == null || currentReason.isBlank()) {
+            return warning;
+        }
+        if (currentReason.contains(warning)) {
+            return currentReason;
+        }
+        return currentReason + "; " + warning;
     }
 
     private boolean hasDuplicateProviderIdentity(KycVerificationResultDto result, Long userId) {

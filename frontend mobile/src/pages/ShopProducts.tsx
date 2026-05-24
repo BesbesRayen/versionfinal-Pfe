@@ -14,7 +14,7 @@ const ShopProducts = () => {
   const rawMerchantId = Number(params?.merchantId ?? 0);
   const rawMerchantName = String(params?.merchantName ?? "Boutique");
   const highlightedProductName = String(params?.highlightedProductName ?? "");
-  const fromQR = Boolean(params?.fromQR);
+  const fromDeepLink = Boolean(params?.fromDeepLink);
   const [resolvedMerchantId, setResolvedMerchantId] = useState(rawMerchantId);
   const [resolvedMerchantName, setResolvedMerchantName] = useState(rawMerchantName);
   const [storeUrl, setStoreUrl] = useState("");
@@ -28,7 +28,7 @@ const ShopProducts = () => {
       setErrorMessage("");
       try {
         let shopId = rawMerchantId;
-        if (fromQR && rawMerchantId === 0 && rawMerchantName) {
+        if (fromDeepLink && rawMerchantId === 0 && rawMerchantName) {
           const allShops = await getShopCatalogShops();
           const match = allShops.find((s) => s.name.toLowerCase() === rawMerchantName.toLowerCase());
           if (match) {
@@ -56,7 +56,7 @@ const ShopProducts = () => {
       }
     };
     loadArticles();
-  }, [fromQR, highlightedProductName, rawMerchantId, rawMerchantName]);
+  }, [fromDeepLink, highlightedProductName, rawMerchantId, rawMerchantName]);
 
   const columnCount = screenWidth >= 860 ? 3 : 2;
   const hasSingleArticle = articles.length === 1;
@@ -91,7 +91,7 @@ const ShopProducts = () => {
           <Text style={styles.title}>{resolvedMerchantName}</Text>
           <Text style={styles.subtitle}>
             {highlightedProductName
-              ? `QR detecte : ${highlightedProductName}. Choisissez l'article correspondant.`
+              ? `Lien mobile ouvert : ${highlightedProductName}. Choisissez l'article correspondant.`
               : `${articles.length} collections disponibles avec paiement flexible.`}
           </Text>
         </View>

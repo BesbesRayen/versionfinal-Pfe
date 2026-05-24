@@ -24,6 +24,8 @@ const EMPLOYMENT_OPTIONS: { value: EmploymentStatus; label: string; icon: string
 ];
 
 const SALARY_DAYS = [1, 5, 10, 15, 20, 25, 28, 30];
+const MIN_MONTHLY_SALARY = 100;
+const MAX_MONTHLY_SALARY = 5000;
 
 const FinancialProfilePage = () => {
   const { user } = useAuth();
@@ -64,7 +66,7 @@ const FinancialProfilePage = () => {
   }, [loadProfile]);
 
   const salaryNum = Number.parseFloat(salary);
-  const valid = Number.isFinite(salaryNum) && salaryNum > 0;
+  const valid = Number.isFinite(salaryNum) && salaryNum >= MIN_MONTHLY_SALARY && salaryNum <= MAX_MONTHLY_SALARY;
   const dueDate = `${salaryDay + 2 > 28 ? 28 : salaryDay + 2} du mois`;
   const preview = useMemo(() => {
     if (!valid) return "0 DT";
@@ -74,7 +76,7 @@ const FinancialProfilePage = () => {
   const handleSave = async () => {
     if (!user) return;
     if (!valid) {
-      setErrorMessage("Le salaire mensuel doit etre un nombre positif.");
+      setErrorMessage("Le salaire mensuel doit etre entre 100 DT et 5000 DT.");
       return;
     }
     setSaving(true);
@@ -150,6 +152,7 @@ const FinancialProfilePage = () => {
             />
             <View style={styles.unitBox}><Text style={styles.unitText}>DT</Text></View>
           </View>
+          <Text style={styles.rangeHint}>Entre 100 DT et 5000 DT.</Text>
         </View>
 
         <View style={styles.card}>
@@ -179,7 +182,7 @@ const FinancialProfilePage = () => {
           </View>
         </View>
 
-        <Pressable style={[styles.primaryButton, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+        <Pressable style={[styles.primaryButton, (!valid || saving) && { opacity: 0.6 }]} onPress={handleSave} disabled={!valid || saving}>
           <MaterialCommunityIcons name="content-save-outline" size={18} color={colors.white} />
           <Text style={styles.primaryButtonText}>{saving ? "Enregistrement..." : "Enregistrer le profil"}</Text>
         </Pressable>
@@ -211,6 +214,7 @@ const styles = StyleSheet.create({
   salaryInput: { flex: 1, height: 56, borderTopLeftRadius: radii.lg, borderBottomLeftRadius: radii.lg, borderWidth: 1, borderColor: colors.cardBorder, paddingHorizontal: 16, fontSize: 22, fontWeight: "900", color: colors.gray900, backgroundColor: colors.surface },
   unitBox: { width: 58, height: 56, borderTopRightRadius: radii.lg, borderBottomRightRadius: radii.lg, borderWidth: 1, borderLeftWidth: 0, borderColor: colors.primaryBorder, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
   unitText: { color: colors.gray900, fontWeight: "900" },
+  rangeHint: { fontSize: 11, color: colors.gray500, fontWeight: "700" },
   dayGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   dayChip: { width: 46, height: 42, borderRadius: radii.md, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   dayChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },

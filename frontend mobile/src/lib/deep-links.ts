@@ -42,7 +42,7 @@ const resolveFromParts = (segments: string[], params: Record<string, string>): R
   }
 
   if (resource === "payment" || resource === "pay") {
-    return { route: actionOrId === "scan" ? "QRScanner" : "Installments" };
+    return { route: "Installments" };
   }
 
   if (resource === "download" || resource === "open" || resource === "home") {
@@ -58,7 +58,7 @@ const resolveFromParts = (segments: string[], params: Record<string, string>): R
           merchantId: merchantId ?? 0,
           merchantName,
           articleName: productName || "Article",
-          fromQR: true,
+          fromDeepLink: true,
         },
       };
     }
@@ -70,7 +70,7 @@ const resolveFromParts = (segments: string[], params: Record<string, string>): R
           merchantId: merchantId ?? 0,
           merchantName,
           highlightedProductName: productName,
-          fromQR: true,
+          fromDeepLink: true,
         },
       };
     }
@@ -82,7 +82,7 @@ const resolveFromParts = (segments: string[], params: Record<string, string>): R
       params: {
         merchantId: merchantId ?? 0,
         merchantName,
-        fromQR: true,
+        fromDeepLink: true,
       },
     };
   }

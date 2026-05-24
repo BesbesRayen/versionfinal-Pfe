@@ -1,5 +1,7 @@
 package com.creaditn.creaditnbackend.dto;
 
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -14,7 +16,8 @@ import lombok.NoArgsConstructor;
 public class CreateFinancialProfileRequest {
 
     @NotNull(message = "Monthly salary is required")
-    @Min(value = 0, message = "Salary must be greater than 0")
+    @DecimalMin(value = "100.0", message = "Monthly salary must be between 100 and 5000 DT")
+    @DecimalMax(value = "5000.0", message = "Monthly salary must be between 100 and 5000 DT")
     private Double monthlySalary;
 
     @NotNull(message = "Salary day is required")

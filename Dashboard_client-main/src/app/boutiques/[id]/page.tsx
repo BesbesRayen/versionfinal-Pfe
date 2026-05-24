@@ -1,353 +1,281 @@
-﻿'use client';
+'use client';
 
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, ExternalLink, MapPin, Globe, Store, Calendar,
-  Building2, ShoppingBag, CheckCircle2, Shield, Clock, Zap,
-  Star, ChevronRight, Smartphone,
+  ArrowLeft,
+  ArrowRight,
+  BadgePercent,
+  Building2,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  Globe2,
+  Heart,
+  MapPin,
+  ShieldCheck,
+  ShoppingBag,
+  Sparkles,
+  Star,
+  Store,
+  Zap,
 } from 'lucide-react';
 import { boutiques } from '@/data/boutiques';
-import QRModal from '@/components/QRModal';
 
-// ── Installment simulator ─────────────────────────────────────────────────────
-function parsePrice(priceStr: string): number {
-  return parseFloat(priceStr.replace(/[^\d.]/g, '')) || 0;
+function domain(url: string) {
+  return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }
 
-function InstallmentSimulator({ price }: { price: number }) {
-  const [months, setMonths] = useState(3);
-  const options = [
-    { m: 3,  rate: 0,    label: '3×',  badge: 'Gratuit' },
-    { m: 6,  rate: 3,    label: '6×',  badge: '+3% total' },
-    { m: 9,  rate: 6,    label: '9×',  badge: '+6% total' },
-    { m: 12, rate: 12,   label: '12×', badge: '+12% total' },
-  ];
-  const chosen = options.find((o) => o.m === months)!;
-  const total = price * (1 + chosen.rate / 100);
-  const monthly = total / months;
-  const interest = total - price;
-
+function PlanCard({ months, fee, note, featured = false }: { months: string; fee: string; note: string; featured?: boolean }) {
   return (
-    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-5 text-white">
-      <div className="flex items-center gap-2 mb-3">
-        <Zap className="w-4 h-4 text-indigo-200" />
-        <span className="text-xs font-bold uppercase tracking-wider text-indigo-200">
-          Simulateur mensualités
-        </span>
+    <div
+      className={`rounded-2xl border p-4 transition-all ${
+        featured
+          ? 'border-[#19C37D]/35 bg-[#19C37D]/10 shadow-lg shadow-[#19C37D]/10'
+          : 'border-[#26324A] bg-[#151B2E]/80'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-black text-white">{months}</p>
+        <p className={`text-lg font-black ${featured ? 'text-[#19C37D]' : 'text-indigo-200'}`}>{fee}</p>
       </div>
-      <p className="text-3xl font-black mb-1">
-        {monthly.toLocaleString('fr-TN', { maximumFractionDigits: 1 })} TND
-        <span className="text-base font-semibold text-indigo-200">/mois</span>
-      </p>
-      {interest > 0 ? (
-        <p className="text-xs text-indigo-300 mb-3">
-          Total {total.toLocaleString('fr-TN', { maximumFractionDigits: 1 })} TND
-          (+{interest.toLocaleString('fr-TN', { maximumFractionDigits: 1 })} TND intérêts)
-        </p>
-      ) : (
-        <p className="text-xs text-emerald-300 font-bold mb-3">0 DT de frais — gratuit</p>
-      )}
-      <div className="grid grid-cols-3 gap-2 mt-3">
-        {options.map((opt) => (
-          <button
-            key={opt.m}
-            onClick={() => setMonths(opt.m)}
-            className={`py-2.5 rounded-2xl text-xs font-bold border transition-all ${
-              months === opt.m
-                ? 'bg-white text-indigo-700 border-white shadow'
-                : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
-            }`}
-          >
-            <span className="block text-sm font-black">{opt.label}</span>
-            <span className="block text-[10px] opacity-75">{opt.badge}</span>
-          </button>
-        ))}
-      </div>
+      <p className="mt-1 text-xs font-semibold text-slate-400">{note}</p>
     </div>
   );
 }
 
-// ── Product card ──────────────────────────────────────────────────────────────
-function ProductCard({
-  name, price, emoji, onBuy,
-}: { name: string; price: string; emoji: string; onBuy: () => void }) {
-  const [simOpen, setSimOpen] = useState(false);
-  const numPrice = parsePrice(price);
-
-  return (
-    <div className="bg-[#111827] rounded-3xl border border-white/10 overflow-hidden hover:border-indigo-500/30 transition-colors group">
-      <div className="p-5">
-        <div className="flex items-start gap-4">
-          <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center text-4xl flex-shrink-0 group-hover:scale-105 transition-transform">
-            {emoji}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-bold text-white leading-snug">{name}</h3>
-            <p className="text-xl font-black text-white mt-1">{price}</p>
-            {numPrice > 0 && (
-              <p className="text-xs text-emerald-400 font-bold mt-0.5">
-                à partir de {(numPrice / 3).toLocaleString('fr-TN', { maximumFractionDigits: 0 })} TND/mois
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-1.5 mt-3 flex-wrap">
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/20">
-            <Zap className="w-2.5 h-2.5" /> 3× gratuit
-          </span>
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 bg-violet-500/20 text-violet-400 rounded-full border border-violet-500/20">
-            6× ou 12× dispo
-          </span>
-        </div>
-      </div>
-
-      <button
-        onClick={() => setSimOpen(!simOpen)}
-        className="w-full text-left px-5 py-2.5 border-t border-white/5 text-xs font-semibold text-indigo-400 hover:bg-indigo-500/10 transition-colors flex items-center justify-between"
-      >
-        Voir les mensualités
-        <ChevronRight className={`w-4 h-4 transition-transform ${simOpen ? 'rotate-90' : ''}`} />
-      </button>
-
-      {simOpen && numPrice > 0 && (
-        <div className="px-4 pb-4">
-          <InstallmentSimulator price={numPrice} />
-        </div>
-      )}
-
-      <div className="px-4 pb-4 pt-1">
-        <button
-          onClick={onBuy}
-          className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-2xl transition-colors"
-        >
-          <Smartphone className="w-4 h-4" />
-          Acheter sur l&apos;app
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
 export default function BoutiqueDetailPage() {
   const params = useParams();
   const id = Number(params.id);
-  const boutique = boutiques.find((b) => b.id === id);
-  const [qrModal, setQrModal] = useState<{ open: boolean; link: string; name: string }>({
-    open: false, link: '', name: '',
-  });
-
-  const openQR = (path: string, label: string) =>
-    setQrModal({ open: true, link: `creditn://${path}`, name: label });
+  const boutique = boutiques.find((item) => item.id === id);
 
   if (!boutique) {
     return (
-      <div className="pt-20 min-h-screen bg-[#0a0f1c] flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-20 h-20 mx-auto bg-white/5 rounded-full flex items-center justify-center mb-6">
-            <Store className="w-10 h-10 text-gray-600" />
-          </div>
-          <h1 className="text-2xl font-black text-white mb-3">Boutique introuvable</h1>
-          <Link href="/boutiques" className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Retour aux boutiques
+      <div className="flex min-h-screen items-center justify-center bg-[#070A12] px-4 pt-16 text-white">
+        <div className="max-w-md rounded-[24px] border border-[#26324A] bg-[#111827] p-8 text-center">
+          <Store className="mx-auto h-10 w-10 text-slate-500" />
+          <h1 className="mt-4 text-2xl font-black">Boutique introuvable</h1>
+          <Link
+            href="/boutiques"
+            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#6D5DFB] px-5 py-3 text-sm font-black text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Retour aux boutiques
           </Link>
         </div>
       </div>
     );
   }
 
-  const domain = boutique.website.replace(/^https?:\/\//, '').replace(/\/$/, '');
-
   return (
-    <>
-      <div className="min-h-screen bg-[#0a0f1c] pt-16">
-        {/* Banner */}
-        <div className={`relative h-44 sm:h-56 bg-gradient-to-r ${boutique.bannerGradient}`}>
-          <div className="absolute inset-0 bg-black/15" />
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 h-full flex items-start pt-5">
-            <Link
-              href="/boutiques"
-              className="inline-flex items-center gap-2 text-sm font-bold text-white/90 hover:text-white bg-black/15 backdrop-blur-sm px-4 py-2 rounded-2xl transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" /> Retour
-            </Link>
-          </div>
-        </div>
+    <div className="min-h-screen bg-[#070A12] pt-16 text-white">
+      <div className="absolute inset-0 -z-0 bg-[radial-gradient(circle_at_top_left,rgba(109,93,251,0.22),transparent_25rem),radial-gradient(circle_at_75%_10%,rgba(25,195,125,0.10),transparent_28rem)]" />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-14 pb-24 relative z-10">
-          {/* Profile header card */}
-          <div className="bg-[#111827] rounded-3xl border border-white/10 p-6 sm:p-8 mb-6">
-            <div className="flex flex-col sm:flex-row items-start gap-5">
-              <div className="w-24 h-24 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center text-5xl flex-shrink-0">
-                {boutique.logo}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                  <h1 className="text-2xl sm:text-3xl font-black text-white">{boutique.name}</h1>
-                  {boutique.conventionActive && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-full">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Partenaire vérifié
-                    </span>
-                  )}
+      <main className="relative z-10 mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <Link
+          href="/boutiques"
+          className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#26324A] bg-[#111827] px-4 py-2 text-sm font-bold text-slate-300 transition-colors hover:border-[#6D5DFB]/60 hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Retour
+        </Link>
+
+        <section className="overflow-hidden rounded-[24px] border border-[#26324A] bg-[#0B1020]/95 shadow-2xl shadow-black/20">
+          <div className="relative p-5 sm:p-8">
+            <div
+              className="absolute right-0 top-0 h-52 w-52 rounded-full blur-3xl"
+              style={{ backgroundColor: `${boutique.accent}24` }}
+            />
+
+            <div className="relative grid gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
+              <div>
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+                  <div
+                    className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[24px] border border-white/10 text-2xl font-black text-white shadow-2xl"
+                    style={{
+                      background: `linear-gradient(135deg, ${boutique.accent}, #151B2E 78%)`,
+                      boxShadow: `0 24px 60px ${boutique.accent}22`,
+                    }}
+                  >
+                    {boutique.logo}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#6D5DFB]/30 bg-[#6D5DFB]/15 px-3 py-1.5 text-xs font-black text-indigo-200">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        {boutique.checkoutLabel}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
+                          boutique.isLocal
+                            ? 'border-[#19C37D]/25 bg-[#19C37D]/10 text-[#19C37D]'
+                            : 'border-violet-300/25 bg-violet-300/10 text-violet-200'
+                        }`}
+                      >
+                        {boutique.isLocal ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
+                        {boutique.isLocal ? 'Partenaire local' : 'International'}
+                      </span>
+                    </div>
+
+                    <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">{boutique.name}</h1>
+                    <p className="mt-3 max-w-2xl text-base leading-7 text-slate-400">{boutique.longDescription}</p>
+
+                    <div className="mt-5 flex flex-wrap gap-3 text-sm font-semibold text-slate-400">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-[#26324A] bg-[#111827] px-3 py-2">
+                        <Store className="h-4 w-4 text-[#19C37D]" />
+                        {boutique.categoryLabel}
+                      </span>
+                      <span className="inline-flex items-center gap-2 rounded-full border border-[#26324A] bg-[#111827] px-3 py-2">
+                        <MapPin className="h-4 w-4 text-[#19C37D]" />
+                        {boutique.city}, {boutique.country}
+                      </span>
+                      <span className="inline-flex items-center gap-2 rounded-full border border-[#26324A] bg-[#111827] px-3 py-2">
+                        <Building2 className="h-4 w-4 text-[#19C37D]" />
+                        {boutique.locations > 0 ? `${boutique.locations} points de vente` : 'Marketplace externe'}
+                      </span>
+                    </div>
+
+                    <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                      <a
+                        href={boutique.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-2 rounded-[20px] bg-[#6D5DFB] px-6 py-4 text-sm font-black text-white shadow-lg shadow-[#6D5DFB]/20 transition-colors hover:bg-[#7C6DFF]"
+                      >
+                        Visiter le site
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                      <button className="inline-flex items-center justify-center gap-2 rounded-[20px] border border-[#26324A] bg-[#151B2E] px-6 py-4 text-sm font-black text-slate-200 transition-colors hover:border-pink-300/40 hover:text-pink-200">
+                        <Heart className="h-4 w-4" />
+                        Ajouter aux favoris
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-3 text-sm text-gray-500 mb-3">
-                  <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {boutique.city}</span>
-                  <span className="flex items-center gap-1"><Building2 className="w-3.5 h-3.5" /> {boutique.locations} magasins</span>
-                  <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> Depuis {boutique.founded}</span>
+              </div>
+
+              <aside className="rounded-[24px] border border-[#26324A] bg-[#111827]/90 p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#19C37D] text-[#06100B]">
+                    <BadgePercent className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide text-[#19C37D]">Payer avec CreditTN</p>
+                    <h2 className="text-xl font-black text-white">Plans flexibles</h2>
+                  </div>
                 </div>
-                <span className="inline-block px-2.5 py-1 bg-indigo-500/10 text-indigo-400 text-xs font-bold rounded-full">
-                  {boutique.category}
-                </span>
+
+                <div className="mt-5 grid gap-2">
+                  <PlanCard months="3 mois" fee="0%" note="sans frais" featured />
+                  <PlanCard months="6 mois" fee="+3%" note="sur le montant total" />
+                  <PlanCard months="9 mois" fee="+6%" note="plan intermediaire" />
+                  <PlanCard months="12 mois" fee="+12%" note="long terme" />
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-[#26324A] bg-[#151B2E] p-4">
+                  <div className="flex items-start gap-3">
+                    <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#19C37D]" />
+                    <p className="text-sm leading-6 text-slate-400">
+                      Conditions transparentes affichees avant validation du paiement.
+                    </p>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 grid gap-6 lg:grid-cols-[1fr_340px]">
+          <div>
+            <div className="mb-5 flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-[#19C37D]">Selection boutique</p>
+                <h2 className="mt-1 text-2xl font-black text-white">Produits populaires</h2>
               </div>
-              <div className="flex flex-col gap-2 w-full sm:w-auto flex-shrink-0">
-                <a
-                  href={boutique.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-2xl hover:bg-indigo-700 transition-colors"
+              <a
+                href={boutique.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden items-center gap-2 text-sm font-black text-indigo-200 transition-colors hover:text-white sm:inline-flex"
+              >
+                Voir catalogue
+                <ArrowRight className="h-4 w-4" />
+              </a>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {boutique.products.map((product) => (
+                <article
+                  key={product.name}
+                  className="group rounded-[24px] border border-[#26324A] bg-[#111827]/90 p-5 shadow-xl shadow-black/10 transition-all hover:-translate-y-1 hover:border-[#6D5DFB]/60 hover:shadow-[#6D5DFB]/10"
                 >
-                  <ExternalLink className="w-4 h-4" /> Visiter le site
-                </a>
-                <button
-                  onClick={() => openQR(`shop?name=${encodeURIComponent(boutique.name)}`, boutique.name)}
-                  className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white/5 border border-white/10 text-gray-300 text-sm font-bold rounded-2xl hover:bg-indigo-500/10 hover:border-indigo-500/30 hover:text-indigo-300 transition-colors"
-                >
-                  <Smartphone className="w-4 h-4" /> Ouvrir dans l&apos;app
-                </button>
-              </div>
+                  <div
+                    className="flex h-28 items-center justify-center rounded-[20px] border border-white/10 text-3xl font-black text-white"
+                    style={{ background: `linear-gradient(135deg, ${boutique.accent}55, #151B2E)` }}
+                  >
+                    {product.tag}
+                  </div>
+                  <div className="mt-5">
+                    <p className="text-xs font-black uppercase tracking-wide text-[#19C37D]">{product.tag}</p>
+                    <h3 className="mt-1 min-h-[48px] text-base font-black leading-6 text-white">{product.name}</h3>
+                    <p className="mt-3 text-2xl font-black text-white">{product.price}</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Eligible CreditTN 3 a 12 mois</p>
+                  </div>
+                  <a
+                    href={boutique.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#151B2E] px-4 py-3 text-sm font-black text-slate-200 transition-colors hover:bg-[#6D5DFB] hover:text-white"
+                  >
+                    Voir produit
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </article>
+              ))}
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-6">
-            {/* Left: About + Products */}
-            <div className="lg:col-span-2 space-y-5">
-              <div className="bg-[#111827] rounded-3xl border border-white/10 p-6">
-                <h2 className="text-lg font-black text-white mb-3 flex items-center gap-2">
-                  <Store className="w-5 h-5 text-indigo-400" /> À propos
-                </h2>
-                <p className="text-gray-400 text-sm leading-relaxed">{boutique.longDescription}</p>
-              </div>
-
-              <div className="bg-[#111827] rounded-3xl border border-white/10 p-6">
-                <h2 className="text-lg font-black text-white mb-5 flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-indigo-400" /> Produits populaires
-                </h2>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {boutique.products.map((product, idx) => (
-                    <ProductCard
-                      key={idx}
-                      name={product.name}
-                      price={product.price}
-                      emoji={product.emoji}
-                      onBuy={() =>
-                        openQR(
-                          `product?shopName=${encodeURIComponent(boutique.name)}&productName=${encodeURIComponent(product.name)}`,
-                          product.name,
-                        )
-                      }
-                    />
-                  ))}
-                </div>
+          <aside className="space-y-4">
+            <div className="rounded-[24px] border border-[#26324A] bg-[#111827]/90 p-5">
+              <h3 className="text-lg font-black text-white">Informations</h3>
+              <div className="mt-4 space-y-3">
+                {[
+                  { label: 'Site web', value: domain(boutique.website), icon: Globe2 },
+                  { label: 'Localisation', value: `${boutique.city}, ${boutique.country}`, icon: MapPin },
+                  { label: 'Depuis', value: boutique.founded, icon: Clock },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-[#26324A] bg-[#151B2E] p-3">
+                    <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-[#19C37D]" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{item.label}</p>
+                      <p className="mt-1 truncate text-sm font-bold text-slate-200">{item.value}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Sidebar */}
-            <div className="space-y-5">
-              {/* BNPL options */}
-              <div className="bg-[#111827] rounded-3xl border border-white/10 p-6">
-                <h3 className="text-sm font-black text-white mb-4">Payer avec CreditTN</h3>
-                <div className="space-y-3">
-                  {[
-                    { label: '3 mois',  sublabel: 'Gratuit — 0% de frais',    color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', Icon: Zap },
-                    { label: '6 mois',  sublabel: '+3% sur le total',          color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',   Icon: Clock },
-                    { label: '9 mois',  sublabel: '+6% sur le total',          color: 'bg-orange-500/10 text-orange-400 border-orange-500/20',  Icon: Clock },
-                    { label: '12 mois', sublabel: '+12% sur le total',         color: 'bg-violet-500/10 text-violet-400 border-violet-500/20', Icon: Star },
-                  ].map((opt) => (
-                    <div key={opt.label} className={`flex items-center gap-3 p-3 rounded-2xl border ${opt.color}`}>
-                      <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
-                        <opt.Icon className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-black">{opt.label}</p>
-                        <p className="text-xs opacity-70">{opt.sublabel}</p>
-                      </div>
+            <div className="rounded-[24px] border border-[#26324A] bg-[#111827]/90 p-5">
+              <h3 className="text-lg font-black text-white">Garanties CreditTN</h3>
+              <div className="mt-4 space-y-3">
+                {[
+                  { icon: ShieldCheck, text: 'Checkout securise' },
+                  { icon: Zap, text: 'Decision rapide' },
+                  { icon: Star, text: 'Experience premium' },
+                ].map((item) => (
+                  <div key={item.text} className="flex items-center gap-3 text-sm font-semibold text-slate-300">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#6D5DFB]/15 text-indigo-200">
+                      <item.icon className="h-4 w-4" />
                     </div>
-                  ))}
-                </div>
-                <button
-                  onClick={() => openQR(`shop?name=${encodeURIComponent(boutique.name)}`, 'Acheter maintenant')}
-                  className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white text-sm font-bold rounded-2xl hover:bg-indigo-700 transition-colors"
-                >
-                  <Smartphone className="w-4 h-4" /> Acheter maintenant
-                </button>
-              </div>
-
-              {/* Store info */}
-              <div className="bg-[#111827] rounded-3xl border border-white/10 p-6">
-                <h3 className="text-sm font-black text-white mb-4">Informations</h3>
-                <div className="space-y-3.5">
-                  <div className="flex items-start gap-3">
-                    <Globe className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Site web</p>
-                      <a href={boutique.website} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-400 hover:underline font-medium">{domain}</a>
-                    </div>
+                    {item.text}
                   </div>
-                  <div className="flex items-start gap-3">
-                    <MapPin className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Siège</p>
-                      <p className="text-sm text-gray-300 font-medium">{boutique.city}, Tunisie</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Building2 className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Points de vente</p>
-                      <p className="text-sm text-gray-300 font-medium">{boutique.locations} magasins</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Calendar className="w-4 h-4 text-gray-500 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Fondée</p>
-                      <p className="text-sm text-gray-300 font-medium">{boutique.founded}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Trust badges */}
-              <div className="bg-[#111827] rounded-3xl border border-white/10 p-6">
-                <h3 className="text-sm font-black text-white mb-4">Garanties CreditTN</h3>
-                <div className="space-y-3">
-                  {[
-                    { Icon: Shield,       text: 'Paiement 100% sécurisé' },
-                    { Icon: Clock,        text: 'Approbation en quelques minutes' },
-                    { Icon: CheckCircle2, text: 'Partenaire officiel vérifié' },
-                  ].map((g) => (
-                    <div key={g.text} className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-indigo-500/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <g.Icon className="w-4 h-4 text-indigo-400" />
-                      </div>
-                      <p className="text-sm text-gray-400">{g.text}</p>
-                    </div>
-                  ))}
-                </div>
+                ))}
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <QRModal
-        isOpen={qrModal.open}
-        onClose={() => setQrModal((s) => ({ ...s, open: false }))}
-        deepLink={qrModal.link}
-        productName={qrModal.name}
-      />
-    </>
+          </aside>
+        </section>
+      </main>
+    </div>
   );
 }

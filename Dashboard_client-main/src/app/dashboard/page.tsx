@@ -8,9 +8,9 @@ import {
   CreditCard, Wallet, CalendarClock, Bell, ShoppingBag,
   Shield, Zap, ChevronRight, RefreshCw, Smartphone,
   CheckCircle, Clock, AlertCircle, Trophy, Lock,
-  Star, Sparkles, Activity, QrCode,
+  Star, Sparkles, Activity, Send, FileText, Download,
 } from 'lucide-react';
-import QRModal from '@/components/QRModal';
+import MobileAccessModal from '@/components/MobileAccessModal';
 import { useSocket } from '@/lib/useSocket';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8082';
@@ -54,6 +54,21 @@ interface Notification {
   message: string;
   read: boolean;
   createdAt: string;
+}
+interface PaymentReceipt {
+  id: number;
+  userId: number;
+  installmentId?: number;
+  amount: number;
+  transactionReference?: string;
+  paymentMethod?: string;
+  paidAt: string;
+  productName?: string;
+  receiptNumber?: string;
+  receiptDownloadUrl?: string;
+  status?: string;
+  installmentNumber?: number;
+  automaticPayment?: boolean;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -169,15 +184,16 @@ export default function DashboardPage() {
   const [credits, setCredits] = useState<CreditInfo[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
-  const [qrModal, setQrModal] = useState({ open: false, link: '', name: '' });
+  const [mobileModal, setMobileModal] = useState({ open: false, link: '', name: '' });
   const [renderNow] = useState(() => Date.now());
   const tokenRef = useRef<string | null>(null);
 
-  const openAppQR = (action: string, name = '') => {
-    setQrModal({ open: true, link: `creditn://${action}`, name });
+  const openMobileAccess = (action: string, name = '') => {
+    setMobileModal({ open: true, link: `creditn://${action}`, name });
   };
 
   const fetchUserData = useCallback(async (token: string) => {
@@ -193,16 +209,17 @@ export default function DashboardPage() {
 
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     const uidParam = userId ? `?userId=${userId}` : '';
-    const [userRes, dashRes, creditsRes, installRes, notifRes] = await Promise.allSettled([
+    const [userRes, dashRes, creditsRes, installRes, notifRes, receiptsRes] = await Promise.allSettled([
       fetch(`${API_BASE}/api/users/profile${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/dashboard${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/credits/my${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/credits/my-installments${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/notifications${uidParam}`, { headers }),
+      fetch(`${API_BASE}/api/payments/receipts${uidParam}`, { headers }),
     ]);
 
     // If all calls return 401, token is stale — force re-login
-    const allUnauthorized = [userRes, dashRes, creditsRes, installRes, notifRes].every(
+    const allUnauthorized = [userRes, dashRes, creditsRes, installRes, notifRes, receiptsRes].every(
       (r) => r.status === 'fulfilled' && r.value.status === 401,
     );
     if (allUnauthorized) {
@@ -258,6 +275,12 @@ export default function DashboardPage() {
       const data = await notifRes.value.json();
       const list = Array.isArray(data) ? data : (data.content ?? []);
       setNotifications(list);
+    }
+
+    if (receiptsRes.status === 'fulfilled' && receiptsRes.value.ok) {
+      const data = await receiptsRes.value.json();
+      const list = Array.isArray(data) ? data : (data.content ?? []);
+      setReceipts(list);
     }
     setLastSync(new Date());
   }, []);
@@ -316,11 +339,16 @@ export default function DashboardPage() {
   const unread = notifications.filter((n) => !n.read).length;
   const nextDue = pendingInst[0];
   const lvl = scoreLevel(score);
+  const totalReceiptsAmount = receipts.reduce((sum, receipt) => sum + Number(receipt.amount ?? 0), 0);
+  const downloadReceipt = (receipt: PaymentReceipt) => {
+    const path = receipt.receiptDownloadUrl ?? `/api/payments/receipt/${receipt.id}`;
+    window.open(`${API_BASE}${path}`, '_blank', 'noopener,noreferrer');
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0f1c] pt-16">
-        <div className="h-36 bg-gradient-to-r from-indigo-600 to-purple-700 shimmer-dark" />
+      <div className="min-h-screen bg-[#070A12] pt-16">
+        <div className="h-36 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 shimmer-dark" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}
@@ -335,17 +363,18 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0f1c] pt-16">
+    <div className="min-h-screen bg-[#070A12] pt-16">
       {/* Hero strip */}
-      <div className={`bg-gradient-to-r ${verified ? 'from-indigo-600 via-violet-600 to-purple-700' : 'from-slate-700 via-slate-800 to-slate-900'} text-white`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7">
+      <div className={`relative overflow-hidden border-b border-white/10 ${verified ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700' : 'bg-gradient-to-r from-slate-800 via-slate-900 to-black'} text-white`}>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_80%_30%,rgba(25,195,125,0.16),transparent_22%)]" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-9">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="animate-slide-up">
-              <p className="text-indigo-200 text-sm font-semibold">Bonjour</p>
-              <h1 className="text-2xl sm:text-3xl font-black mt-0.5 tracking-tight">
+              <p className="text-indigo-100/80 text-sm font-bold">Bonjour</p>
+              <h1 className="text-3xl sm:text-4xl font-black mt-1 tracking-tight">
                 {user?.firstName} {user?.lastName}
               </h1>
-              <p className="text-indigo-200/80 text-xs mt-1">{user?.email}</p>
+              <p className="text-indigo-100/75 text-sm mt-2">{user?.email}</p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button
@@ -378,7 +407,7 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-7">
         <VerificationBanner
           kycStatus={user?.kycStatus ?? 'NONE'}
-          onVerify={() => openAppQR('kyc/start', "Verification d'identite")}
+          onVerify={() => openMobileAccess('kyc/start', "Verification d'identite")}
         />
 
         {/* Quick stats */}
@@ -389,7 +418,7 @@ export default function DashboardPage() {
             { label: 'Achats actifs',      value: verified ? String(activeCredits.length) : '—',                                  icon: ShoppingBag,  color: 'text-emerald-400',bg: 'bg-emerald-500/10',locked: false },
             { label: 'Prochaine echeance', value: nextDue ? new Date(nextDue.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : 'Aucune', icon: CalendarClock, color: nextDue ? 'text-amber-400' : 'text-gray-500', bg: nextDue ? 'bg-amber-500/10' : 'bg-white/5', locked: false },
           ].map((stat) => (
-            <div key={stat.label} className="bg-[#111827] rounded-3xl border border-white/10 p-5 card-hover animate-fadeIn">
+            <div key={stat.label} className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 card-hover animate-fadeIn">
               <div className="flex items-center justify-between mb-3">
                 <div className={`w-10 h-10 ${stat.bg} rounded-2xl flex items-center justify-center`}>
                   {stat.locked ? <Lock className="w-5 h-5 text-gray-600" /> : <stat.icon className={`w-5 h-5 ${stat.color}`} />}
@@ -405,7 +434,7 @@ export default function DashboardPage() {
         {/* Main grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Credit Score card */}
-          <div className="bg-[#111827] rounded-3xl border border-white/10 p-6 animate-fadeIn">
+          <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="text-base font-black text-white">Score Credit</h2>
@@ -457,7 +486,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => openAppQR('score/details', 'Details du score')}
+                  onClick={() => openMobileAccess('score/details', 'Details du score')}
                   className="mt-4 w-full flex items-center justify-center gap-2 py-3 bg-white/5 text-gray-300 text-sm font-bold rounded-2xl hover:bg-indigo-500/10 hover:text-indigo-300 transition-colors"
                 >
                   <Trophy className="w-4 h-4" />
@@ -470,7 +499,7 @@ export default function DashboardPage() {
                   Votre score credit sera revele apres validation de votre identite.
                 </p>
                 <button
-                  onClick={() => openAppQR('kyc/start', 'Verification KYC')}
+                  onClick={() => openMobileAccess('kyc/start', 'Verification KYC')}
                   className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white text-sm font-bold rounded-2xl hover:bg-indigo-700 transition-colors"
                 >
                   <Shield className="w-4 h-4" />
@@ -482,7 +511,7 @@ export default function DashboardPage() {
 
           {/* Active purchases + installments */}
           <div className="lg:col-span-2 space-y-5">
-            <div className="bg-[#111827] rounded-3xl border border-white/10 p-6 animate-fadeIn">
+            <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
               <div className="flex items-center justify-between mb-5">
                 <div>
                   <h2 className="text-base font-black text-white">Mes Achats BNPL</h2>
@@ -536,8 +565,86 @@ export default function DashboardPage() {
               )}
             </div>
 
+            <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-5">
+                <div>
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-violet-400/20 bg-violet-500/15">
+                      <FileText className="h-5 w-5 text-violet-300" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-violet-300">Reçus</p>
+                      <h2 className="text-base font-black text-white">Historique des paiements</h2>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:min-w-60">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                    <p className="text-[10px] font-bold uppercase text-gray-500">Reçus</p>
+                    <p className="stat-number text-lg font-black text-white">{receipts.length}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                    <p className="text-[10px] font-bold uppercase text-gray-500">Total payé</p>
+                    <p className="stat-number text-lg font-black text-emerald-300">{totalReceiptsAmount.toLocaleString('fr-TN')} TND</p>
+                  </div>
+                </div>
+              </div>
+
+              {receipts.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-[#26324A] bg-[#0B1020] px-6 py-8 text-center">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/15">
+                    <FileText className="h-6 w-6 text-violet-300" />
+                  </div>
+                  <p className="text-sm font-black text-white">Aucun reçu disponible</p>
+                  <p className="mt-1 text-xs font-medium text-gray-500">
+                    Chaque paiement validé générera automatiquement un reçu PDF ici.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {receipts.slice(0, 5).map((receipt) => (
+                    <div
+                      key={receipt.id}
+                      className="group flex flex-col gap-3 rounded-2xl border border-white/10 bg-[#0B1020] p-4 transition-all hover:border-violet-400/40 hover:bg-violet-500/10 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border ${receipt.automaticPayment ? 'border-emerald-400/20 bg-emerald-500/15' : 'border-violet-400/20 bg-violet-500/15'}`}>
+                          {receipt.automaticPayment ? <RefreshCw className="h-5 w-5 text-emerald-300" /> : <FileText className="h-5 w-5 text-violet-300" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-white">
+                            {receipt.productName ?? 'Paiement CreditTN'}
+                          </p>
+                          <p className="mt-0.5 truncate font-mono text-[11px] text-gray-500">
+                            {receipt.receiptNumber ?? receipt.transactionReference ?? `REC-${receipt.id}`}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold text-gray-500">
+                            <span>{new Date(receipt.paidAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                            {receipt.installmentNumber && <span>• Mensualité {receipt.installmentNumber}</span>}
+                            {receipt.automaticPayment && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300">Auto</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                        <p className="stat-number text-base font-black text-white">
+                          {Number(receipt.amount ?? 0).toLocaleString('fr-TN')} TND
+                        </p>
+                        <button
+                          onClick={() => downloadReceipt(receipt)}
+                          className="inline-flex items-center gap-2 rounded-2xl border border-violet-400/25 bg-violet-500/15 px-3.5 py-2 text-xs font-black text-violet-200 transition-all hover:border-violet-300/50 hover:bg-violet-500/25"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          PDF
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {pendingInst.length > 0 && (
-              <div className="bg-[#111827] rounded-3xl border border-white/10 p-6 animate-fadeIn">
+              <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
                 <h3 className="text-base font-black text-white mb-4">Prochaines Echeances</h3>
                 <div className="space-y-2.5">
                   {pendingInst.slice(0, 4).map((inst) => {
@@ -562,7 +669,7 @@ export default function DashboardPage() {
                         <div className="text-right flex-shrink-0">
                           <p className="text-sm font-black text-white stat-number">{inst.amount.toLocaleString('fr-TN')} TND</p>
                           <button
-                            onClick={() => openAppQR(`payment/pay/${inst.id}`, "Payer l'echeance")}
+                            onClick={() => openMobileAccess(`payment/pay/${inst.id}`, "Payer l'echeance")}
                             className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 mt-0.5"
                           >
                             Payer sur l&apos;app
@@ -579,7 +686,7 @@ export default function DashboardPage() {
 
         {/* Notifications */}
         {notifications.length > 0 && (
-          <div className="bg-[#111827] rounded-3xl border border-white/10 p-6 animate-fadeIn">
+          <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-black text-white">Notifications</h2>
               <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300">{unread} non lues</span>
@@ -602,7 +709,7 @@ export default function DashboardPage() {
         )}
 
         {/* Payer avec CreditTN */}
-        <div className="bg-[#111827] rounded-3xl border border-white/10 p-6 animate-fadeIn">
+        <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <div className="flex items-center gap-2.5 mb-1">
@@ -614,11 +721,11 @@ export default function DashboardPage() {
               <p className="text-xs text-gray-500 ml-10.5">Echelonnez vos achats en toute liberte</p>
             </div>
             <button
-              onClick={() => openAppQR('payment/scan', 'Scanner pour payer')}
+              onClick={() => openMobileAccess('payment/continue', 'Continuer le paiement sur mobile')}
               className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-colors flex-shrink-0"
             >
-              <QrCode className="w-3.5 h-3.5" />
-              Scanner avec l&apos;app
+              <Send className="w-3.5 h-3.5" />
+              Continuer sur mobile
             </button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -628,7 +735,7 @@ export default function DashboardPage() {
               { months: 9,  label: '9 mois',  rate: '+6% total',     sublabel: 'sur le montant',  tag: 'Flex',       tagClass: 'bg-amber-500/20 text-amber-300',     cardClass: 'bg-white/5 border-white/10 hover:bg-white/10',                   valueClass: 'text-amber-300',   recommended: false },
               { months: 12, label: '12 mois', rate: '+12% total',    sublabel: 'sur le montant',  tag: 'Long terme', tagClass: 'bg-violet-500/20 text-violet-300',   cardClass: 'bg-white/5 border-white/10 hover:bg-white/10',                   valueClass: 'text-violet-300',  recommended: false },
             ].map((plan) => (
-              <div key={plan.months} className={`relative p-5 rounded-2xl border transition-colors cursor-pointer ${plan.cardClass}`}>
+              <div key={plan.months} className={`relative p-5 rounded-2xl border transition-all cursor-pointer hover:-translate-y-0.5 ${plan.cardClass}`}>
                 {plan.recommended && (
                   <div className="absolute -top-2 left-4">
                     <span className="bg-emerald-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full">
@@ -651,12 +758,12 @@ export default function DashboardPage() {
             ))}
           </div>
           <p className="text-xs text-gray-600 mt-4 text-center">
-            Scannez le QR code en caisse avec l&apos;application CreditTN pour payer en plusieurs fois
+            Lancez la confirmation mobile CreditTN pour payer en plusieurs fois avec conditions transparentes
           </p>
         </div>
 
         {/* App download CTA */}
-        <div className="relative bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 rounded-3xl p-6 sm:p-8 text-white overflow-hidden animate-fadeIn">
+        <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 p-6 text-white shadow-2xl shadow-indigo-950/30 animate-fadeIn sm:p-8">
           <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
           <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div>
@@ -676,21 +783,21 @@ export default function DashboardPage() {
               </div>
             </div>
             <button
-              onClick={() => openAppQR('download', 'Telecharger CreditTN')}
+              onClick={() => openMobileAccess('download', 'Telecharger CreditTN')}
               className="flex items-center gap-2.5 px-6 py-3.5 bg-white text-indigo-700 font-bold rounded-2xl hover:bg-indigo-50 transition-colors flex-shrink-0 shadow-lg text-sm"
             >
               <Smartphone className="w-4 h-4" />
-              Scanner pour telecharger
+              Acceder a l&apos;application mobile
             </button>
           </div>
         </div>
       </div>
 
-      <QRModal
-        isOpen={qrModal.open}
-        onClose={() => setQrModal({ ...qrModal, open: false })}
-        deepLink={qrModal.link}
-        productName={qrModal.name}
+      <MobileAccessModal
+        isOpen={mobileModal.open}
+        onClose={() => setMobileModal({ ...mobileModal, open: false })}
+        deepLink={mobileModal.link}
+        title={mobileModal.name}
       />
     </div>
   );

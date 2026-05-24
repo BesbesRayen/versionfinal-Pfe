@@ -46,6 +46,8 @@ const GR = colors.success;
 const RE = colors.error;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ALLOWED_UPLOAD_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MIN_MONTHLY_SALARY = 100;
+const MAX_MONTHLY_SALARY = 5000;
 
 // --- Types ---
 interface KycData {
@@ -436,14 +438,19 @@ const Step3 = ({
   const [salary, setSalary] = useState("");
   const [salaryDay, setSalaryDay] = useState(25);
   const [emp, setEmp] = useState("FULL_TIME");
-  const valid = parseFloat(salary) > 0;
+  const salaryNum = Number.parseFloat(salary);
+  const valid = Number.isFinite(salaryNum) && salaryNum >= MIN_MONTHLY_SALARY && salaryNum <= MAX_MONTHLY_SALARY;
 
   const submit = async () => {
-    if (!user || !valid) return;
+    if (!user) return;
+    if (!valid) {
+      setError("Le salaire mensuel doit etre entre 100 DT et 5000 DT.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      await saveFinancialProfile(user.userId, { monthlySalary: parseFloat(salary), salaryDay, employmentStatus: emp });
+      await saveFinancialProfile(user.userId, { monthlySalary: salaryNum, salaryDay, employmentStatus: emp });
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossible de sauvegarder.");
@@ -460,6 +467,7 @@ const Step3 = ({
           <TextInput style={s3.salaryInput} value={salary} onChangeText={(t) => setSalary(t.replace(/[^0-9.]/g, ""))} placeholder="0" placeholderTextColor={G4} keyboardType="numeric" />
           <View style={s3.salaryUnit}><Text style={s3.salaryUnitText}>DT</Text></View>
         </View>
+        <Text style={s3.rangeHint}>Entre 100 DT et 5000 DT.</Text>
       </View>
       <View style={s3.section}>
         <Text style={s3.label}>Situation professionnelle</Text>
@@ -497,6 +505,7 @@ const s3 = StyleSheet.create({
   salaryInput: { flex: 1, height: 56, borderRadius: 14, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderWidth: 1.5, borderColor: G3, paddingHorizontal: 16, fontSize: 22, fontWeight: "700", color: G9, backgroundColor: G1 },
   salaryUnit: { width: 56, height: 56, borderRadius: 14, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderWidth: 1.5, borderColor: P + "44", backgroundColor: P + "22", alignItems: "center", justifyContent: "center" },
   salaryUnitText: { color: P, fontWeight: "800", fontSize: 14 },
+  rangeHint: { fontSize: 11, color: G5, fontWeight: "700" },
   empGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   empBtn: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: G1, borderWidth: 1.5, borderColor: "transparent" },
   empBtnActive: { borderColor: P, backgroundColor: PL },

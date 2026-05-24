@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,7 +14,7 @@ import MobileLayout from "@/components/MobileLayout";
 import BottomNav from "@/components/BottomNav";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { FintechCard, MiniStat, ProgressRing } from "@/components/FintechUI";
-import { CreditBalanceResult, getCreditBalance, getMyInstallments, getMyPurchases, getTransactions, Installment, PurchaseOrderResult, Transaction } from "@/lib/api";
+import { API_BASE_URL, CreditBalanceResult, getCreditBalance, getMyInstallments, getMyPurchases, getMyReceipts, getTransactions, Installment, Payment, PurchaseOrderResult, Transaction } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { colors, radii } from "@/lib/theme";
 
@@ -37,6 +38,7 @@ const PaymentHistory = () => {
   const { navigate } = useAppNavigation();
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [receipts, setReceipts] = useState<Payment[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [orders, setOrders] = useState<PurchaseOrderResult[]>([]);
   const [balance, setBalance] = useState<CreditBalanceResult | null>(null);
@@ -49,13 +51,15 @@ const PaymentHistory = () => {
     if (!silent) setLoading(true);
     setError("");
     try {
-      const [txData, installmentData, orderData, balanceData] = await Promise.all([
+      const [txData, receiptData, installmentData, orderData, balanceData] = await Promise.all([
         getTransactions(user.userId),
+        getMyReceipts(user.userId).catch(() => [] as Payment[]),
         getMyInstallments(user.userId).catch(() => [] as Installment[]),
         getMyPurchases(user.userId).catch(() => [] as PurchaseOrderResult[]),
         getCreditBalance(user.userId).catch(() => null),
       ]);
       setTransactions(txData);
+      setReceipts(receiptData);
       setInstallments(installmentData);
       setOrders(orderData);
       setBalance(balanceData);
@@ -69,9 +73,7 @@ const PaymentHistory = () => {
 
   useEffect(() => { loadPayments(); }, [loadPayments]);
 
-  const totalPaid = transactions
-    .filter((t) => t.type === "PAYMENT" && t.status === "SUCCESS")
-    .reduce((sum, t) => sum + t.amount, 0);
+  const totalPaid = receipts.reduce((sum, receipt) => sum + receipt.amount, 0);
   const activeCredit = useMemo(
     () => orders.filter((order) => order.paymentType === "CREDIT").reduce((sum, order) => sum + (order.financedAmount ?? 0), 0),
     [orders],
@@ -154,15 +156,56 @@ const PaymentHistory = () => {
         )}
         {!!error && <Text style={styles.errorText}>{error}</Text>}
 
-        {!loading && transactions.length === 0 && (
+        {!loading && receipts.length === 0 && transactions.length === 0 && (
           <View style={styles.emptyWrap}>
             <MaterialCommunityIcons name="receipt-text-outline" size={48} color={colors.gray400} />
-            <Text style={styles.emptyText}>Aucune transaction</Text>
-            <Text style={styles.emptySubtext}>Vos paiements apparaitront ici.</Text>
+            <Text style={styles.emptyText}>Aucun recu</Text>
+            <Text style={styles.emptySubtext}>Vos recus de paiement apparaitront ici.</Text>
+          </View>
+        )}
+
+        {receipts.length > 0 && (
+          <View style={styles.receiptsCard}>
+            <View style={styles.receiptsHeader}>
+              <View>
+                <Text style={styles.receiptsEyebrow}>Recus enregistres</Text>
+                <Text style={styles.receiptsTitle}>Historique des paiements</Text>
+              </View>
+              <View style={styles.receiptsCount}>
+                <Text style={styles.receiptsCountText}>{receipts.length}</Text>
+              </View>
+            </View>
+            {receipts.map((receipt) => {
+              const receiptUrl = `${API_BASE_URL}${receipt.receiptDownloadUrl ?? `/api/payments/receipt/${receipt.id}`}`;
+              return (
+                <View key={receipt.id} style={styles.receiptRow}>
+                  <View style={styles.receiptIcon}>
+                    <MaterialCommunityIcons name={receipt.automaticPayment ? "autorenew" : "receipt-text-check-outline"} size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.receiptInfo}>
+                    <Text style={styles.receiptProduct} numberOfLines={1}>{receipt.productName ?? "Paiement CreditTN"}</Text>
+                    <Text style={styles.receiptNumber} numberOfLines={1}>{receipt.receiptNumber ?? receipt.transactionReference}</Text>
+                    <Text style={styles.receiptMeta}>
+                      {formatDate(receipt.paidAt)}
+                      {receipt.installmentNumber ? ` · Mensualite ${receipt.installmentNumber}` : ""}
+                      {receipt.automaticPayment ? " · Auto" : ""}
+                    </Text>
+                  </View>
+                  <View style={styles.receiptRight}>
+                    <Text style={styles.receiptAmount}>{receipt.amount.toFixed(2)} TND</Text>
+                    <Pressable style={styles.downloadBtn} onPress={() => Linking.openURL(receiptUrl)}>
+                      <MaterialCommunityIcons name="download" size={13} color={colors.primary} />
+                      <Text style={styles.downloadBtnText}>PDF</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })}
           </View>
         )}
 
         {/* Transaction list */}
+        {transactions.length > 0 && <Text style={styles.sectionTitle}>Transactions techniques</Text>}
         {transactions.map((tx) => {
           const typeConf = TYPE_CONFIG[tx.type] ?? TYPE_CONFIG.PAYMENT;
           const statusConf = STATUS_CONFIG[tx.status] ?? STATUS_CONFIG.SUCCESS;
@@ -254,6 +297,23 @@ const styles = StyleSheet.create({
   txAmount: { fontSize: 14, fontWeight: "800" },
   txStatusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.sm },
   txStatusText: { fontSize: 10, fontWeight: "700" },
+  receiptsCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xxl, padding: 16, gap: 10 },
+  receiptsHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 },
+  receiptsEyebrow: { fontSize: 10, color: colors.primary, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.6 },
+  receiptsTitle: { marginTop: 3, fontSize: 16, color: colors.gray900, fontWeight: "900" },
+  receiptsCount: { minWidth: 34, height: 34, borderRadius: 17, backgroundColor: colors.primaryBg, alignItems: "center", justifyContent: "center" },
+  receiptsCountText: { color: colors.primary, fontWeight: "900", fontSize: 13 },
+  receiptRow: { flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: 1, borderTopColor: colors.cardBorder, paddingTop: 12, marginTop: 2 },
+  receiptIcon: { width: 42, height: 42, borderRadius: radii.lg, backgroundColor: colors.primaryBg, alignItems: "center", justifyContent: "center" },
+  receiptInfo: { flex: 1, gap: 2 },
+  receiptProduct: { fontSize: 13, fontWeight: "800", color: colors.gray900 },
+  receiptNumber: { fontSize: 10, color: colors.gray500, fontFamily: "monospace" },
+  receiptMeta: { fontSize: 10, color: colors.gray500, fontWeight: "600" },
+  receiptRight: { alignItems: "flex-end", gap: 6 },
+  receiptAmount: { fontSize: 13, fontWeight: "900", color: colors.gray900 },
+  downloadBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.primaryBg, borderRadius: radii.sm, paddingHorizontal: 8, paddingVertical: 5 },
+  downloadBtnText: { color: colors.primary, fontSize: 10, fontWeight: "900" },
+  sectionTitle: { fontSize: 11, color: colors.gray500, fontWeight: "900", textTransform: "uppercase", marginTop: 6 },
 });
 
 export default PaymentHistory;

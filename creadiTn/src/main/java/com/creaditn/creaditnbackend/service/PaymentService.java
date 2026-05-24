@@ -6,6 +6,7 @@ import com.creaditn.creaditnbackend.dto.PaymentRequest;
 import com.creaditn.creaditnbackend.entity.*;
 import com.creaditn.creaditnbackend.exception.BadRequestException;
 import com.creaditn.creaditnbackend.exception.ResourceNotFoundException;
+import com.creaditn.creaditnbackend.repository.InstallmentRepository;
 import com.creaditn.creaditnbackend.repository.PaymentRepository;
 import com.creaditn.creaditnbackend.repository.UserRepository;
 import com.creaditn.creaditnbackend.repository.UserWalletRepository;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,6 +32,7 @@ public class PaymentService {
     private final CreadiScoreService creadiScoreService;
     private final UserWalletRepository userWalletRepository;
     private final TransactionService transactionService;
+    private final InstallmentRepository installmentRepository;
 
     @Transactional
     public PaymentDto makePayment(Long userId, PaymentRequest request) {
@@ -95,19 +98,40 @@ public class PaymentService {
 
         notificationService.sendNotification(userId,
                 "Payment Confirmed",
-                "Payment of " + request.getAmount() + " DT confirmed. Ref: " + txRef,
+                "Payment of " + request.getAmount() + " DT confirmed. Receipt: " + receiptNumber(payment),
                 NotificationType.PAYMENT_CONFIRMED);
 
         return mapToDto(payment);
     }
 
     public List<PaymentDto> getUserPayments(Long userId) {
-        return paymentRepository.findByUserId(userId)
+        return paymentRepository.findByUserIdOrderByPaidAtDesc(userId)
                 .stream().map(this::mapToDto).toList();
+    }
+
+    public List<PaymentDto> getUserReceipts(Long userId) {
+        return getUserPayments(userId);
+    }
+
+    @Transactional
+    public PayAllResponse collectOutstandingInstallmentsForAdmin(Long userId) {
+        return payAllInstallmentsInternal(userId, "ADMIN_CARD", "ADMIN_COLLECTION",
+                "Admin debt collection", "Outstanding installments collected by admin");
     }
 
         @Transactional
         public PayAllResponse payAllInstallments(Long userId) {
+        return payAllInstallmentsInternal(userId, "CARD", "PAYMENT",
+                "Bulk installment payment", "All your due installments have been paid successfully.");
+        }
+
+    private PayAllResponse payAllInstallmentsInternal(
+            Long userId,
+            String paymentMethod,
+            String transactionType,
+            String transactionDescription,
+            String notificationMessage
+    ) {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -144,7 +168,7 @@ public class PaymentService {
                 .installment(installment)
                 .amount(installment.getAmount().add(installment.getPenalty() != null ? installment.getPenalty() : BigDecimal.ZERO))
                 .transactionReference("TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
-                .paymentMethod("CARD")
+                .paymentMethod(paymentMethod)
                 .build())
             .toList();
 
@@ -157,8 +181,8 @@ public class PaymentService {
 
         // Record bulk transaction
         String bulkRef = "TXN-ALL-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        transactionService.record(userId, debtBefore, "PAYMENT", "SUCCESS",
-                "Bulk installment payment ("+paidCount+" installments)", bulkRef);
+        transactionService.record(userId, debtBefore, transactionType, "SUCCESS",
+                transactionDescription + " ("+paidCount+" installments)", bulkRef);
 
         // Bulk payment is treated as stable behavior if none are overdue.
         boolean hasOverdue = unpaidInstallments.stream().anyMatch(i -> i.getStatus() == InstallmentStatus.OVERDUE);
@@ -173,7 +197,7 @@ public class PaymentService {
         notificationService.sendNotification(
             userId,
             "All Installments Paid",
-            "All your due installments have been paid successfully.",
+            notificationMessage,
             NotificationType.PAYMENT_CONFIRMED
         );
 
@@ -183,7 +207,7 @@ public class PaymentService {
             .debtBefore(debtBefore)
             .debtAfter(BigDecimal.ZERO)
             .build();
-        }
+    }
 
     public PaymentDto getPaymentByReference(String reference) {
         Payment payment = paymentRepository.findByTransactionReference(reference)
@@ -192,15 +216,51 @@ public class PaymentService {
     }
 
     private PaymentDto mapToDto(Payment p) {
+        Installment installment = p.getInstallment();
+        CreditRequest creditRequest = installment.getCreditRequest();
         return PaymentDto.builder()
                 .id(p.getId())
                 .userId(p.getUser().getId())
-                .installmentId(p.getInstallment().getId())
+                .installmentId(installment.getId())
                 .amount(p.getAmount())
                 .transactionReference(p.getTransactionReference())
                 .paymentMethod(p.getPaymentMethod())
                 .paidAt(p.getPaidAt())
+                .productName(creditRequest.getProductName() == null ? "Financement CreadiTN" : creditRequest.getProductName())
+                .receiptNumber(receiptNumber(p))
+                .receiptDownloadUrl("/api/payments/receipt/" + p.getId())
+                .status("PAID")
+                .installmentNumber(resolveInstallmentNumber(installment))
+                .automaticPayment(isAutomaticPayment(p.getPaymentMethod()))
                 .build();
+    }
+
+    private String receiptNumber(Payment payment) {
+        String year = payment.getPaidAt() == null ? String.valueOf(java.time.Year.now().getValue()) : String.valueOf(payment.getPaidAt().getYear());
+        return "RCPT-" + year + "-" + String.format("%06d", payment.getId() == null ? 0 : payment.getId());
+    }
+
+    private boolean isAutomaticPayment(String paymentMethod) {
+        if (paymentMethod == null) {
+            return false;
+        }
+        String normalized = paymentMethod.toUpperCase();
+        return normalized.contains("AUTO") || normalized.contains("SUBSCRIPTION");
+    }
+
+    private int resolveInstallmentNumber(Installment installment) {
+        List<Installment> installments = installmentRepository.findByCreditRequestId(installment.getCreditRequest().getId())
+                .stream()
+                .sorted(Comparator.comparing(Installment::getDueDate).thenComparing(Installment::getId))
+                .toList();
+
+        for (int i = 0; i < installments.size(); i++) {
+            if (installments.get(i).getId().equals(installment.getId())) {
+                return i + 1;
+            }
+        }
+
+        return 1;
     }
 
     private void applyBehaviorImpact(User user, Installment installment) {

@@ -11,19 +11,17 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { register } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { colors, radii } from "@/lib/theme";
 
 const Register = () => {
   const { navigate } = useAppNavigation();
-  const { setUser } = useAuth();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [address, setAddress] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -63,7 +61,6 @@ const Register = () => {
         lastName: lastName.trim(),
         email: email.trim(),
         password,
-        phone: phone.trim() || undefined,
         address: address.trim() || undefined,
       });
 
@@ -85,11 +82,11 @@ const Register = () => {
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.headerBlock}>
             <View style={styles.logoBox}>
-              <Text style={styles.logoText}>+</Text>
+              <MaterialCommunityIcons name="account-plus-outline" size={27} color={colors.white} />
             </View>
 
             <Text style={styles.title}>Creer votre compte</Text>
-            <Text style={styles.subtitle}>Inscrivez-vous pour commencer avec CreadiTN</Text>
+            <Text style={styles.subtitle}>Inscrivez-vous pour commencer avec CreditTN</Text>
           </View>
 
           <View style={styles.form}>
@@ -140,22 +137,6 @@ const Register = () => {
             </View>
 
             <View>
-              <Text style={styles.label}>TELEPHONE (OPTIONNEL)</Text>
-              <TextInput
-                value={phone}
-                onChangeText={(value) => {
-                  setPhone(value);
-                  clearError();
-                }}
-                style={styles.input}
-                placeholder="+216 XX XXX XXX"
-                placeholderTextColor="#6b6b80"
-                keyboardType="phone-pad"
-              />
-            </View>
-
-            <View>
-            <View>
               <Text style={styles.label}>ADRESSE (OPTIONNEL)</Text>
               <TextInput
                 value={address}
@@ -168,8 +149,10 @@ const Register = () => {
                 placeholderTextColor="#6b6b80"
               />
             </View>
+            <View>
               <Text style={styles.label}>MOT DE PASSE</Text>
               <View style={styles.passwordWrapper}>
+                <MaterialCommunityIcons name="lock-outline" size={18} color={colors.gray400} />
                 <TextInput
                   value={password}
                   onChangeText={(value) => {
@@ -185,7 +168,7 @@ const Register = () => {
                   onPress={() => setShowPassword((prev) => !prev)}
                   style={styles.passwordToggle}
                 >
-                  <Text style={styles.passwordToggleText}>{showPassword ? "🙈" : "👁"}</Text>
+                  <MaterialCommunityIcons name={showPassword ? "eye-off-outline" : "eye-outline"} size={19} color={colors.primary} />
                 </Pressable>
               </View>
             </View>
@@ -193,6 +176,7 @@ const Register = () => {
             <View>
               <Text style={styles.label}>CONFIRMER LE MOT DE PASSE</Text>
               <View style={styles.passwordWrapper}>
+                <MaterialCommunityIcons name="shield-key-outline" size={18} color={colors.gray400} />
                 <TextInput
                   value={confirmPassword}
                   onChangeText={(value) => {
@@ -208,7 +192,7 @@ const Register = () => {
                   onPress={() => setShowConfirmPassword((prev) => !prev)}
                   style={styles.passwordToggle}
                 >
-                  <Text style={styles.passwordToggleText}>{showConfirmPassword ? "🙈" : "👁"}</Text>
+                  <MaterialCommunityIcons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={19} color={colors.primary} />
                 </Pressable>
               </View>
             </View>
@@ -224,7 +208,12 @@ const Register = () => {
               </Text>
             </TouchableOpacity>
 
-            {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+            {!!errorMessage && (
+              <View style={styles.errorCard}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={16} color={colors.error} />
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            )}
           </View>
 
           <Text style={styles.footerText}>
@@ -250,30 +239,31 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 28,
+    paddingHorizontal: 22,
+    paddingVertical: 34,
   },
   headerBlock: {
-    marginBottom: 30,
+    marginBottom: 32,
   },
   logoBox: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.xxl,
+    width: 60,
+    height: 60,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 18,
-  },
-  logoText: {
-    fontSize: 30,
-    color: colors.white,
-    fontWeight: "800",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+    shadowColor: colors.ring,
+    shadowOpacity: 0.32,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
   },
   title: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "700",
+    fontSize: 31,
+    lineHeight: 37,
+    fontWeight: "900",
     color: colors.gray900,
   },
   subtitle: {
@@ -283,7 +273,7 @@ const styles = StyleSheet.create({
     color: colors.gray500,
   },
   form: {
-    gap: 14,
+    gap: 16,
   },
   row: {
     flexDirection: "row",
@@ -301,47 +291,51 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: colors.gray200,
-    backgroundColor: colors.gray50,
-    borderRadius: radii.lg,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 14,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    fontSize: 15,
     color: colors.gray900,
   },
   passwordWrapper: {
-    position: "relative",
-    justifyContent: "center",
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    paddingLeft: 15,
+    paddingRight: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   passwordInput: {
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    backgroundColor: colors.gray50,
-    borderRadius: radii.lg,
-    paddingLeft: 14,
-    paddingRight: 46,
-    paddingVertical: 14,
-    fontSize: 14,
+    flex: 1,
+    paddingVertical: 15,
+    fontSize: 15,
     color: colors.gray900,
   },
   passwordToggle: {
-    position: "absolute",
-    right: 12,
-    height: 34,
-    width: 34,
+    height: 38,
+    width: 38,
+    borderRadius: radii.full,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
-  },
-  passwordToggleText: {
-    fontSize: 16,
   },
   registerButton: {
-    marginTop: 6,
+    marginTop: 8,
     backgroundColor: colors.primary,
-    borderRadius: radii.lg,
+    borderRadius: radii.xl,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
+    paddingVertical: 16,
+    shadowColor: colors.ring,
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
   },
   registerButtonDisabled: {
     opacity: 0.7,
@@ -349,12 +343,24 @@ const styles = StyleSheet.create({
   registerButtonText: {
     color: colors.white,
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "800",
+  },
+  errorCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.errorLight,
+    borderWidth: 1,
+    borderColor: colors.errorBorder,
+    borderRadius: radii.xl,
+    padding: 12,
   },
   errorText: {
+    flex: 1,
     color: colors.error,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 18,
+    fontWeight: "700",
   },
   footerText: {
     marginTop: 26,

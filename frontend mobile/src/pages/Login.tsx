@@ -66,7 +66,9 @@ const Login = () => {
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.headerBlock}>
             <View style={styles.logoBox}>
-              <Text style={styles.logoText}>CT</Text>
+              <View style={styles.logoInner}>
+                <Text style={styles.logoText}>CT</Text>
+              </View>
             </View>
 
             <Text style={styles.eyebrow}>CREDITN</Text>
@@ -77,24 +79,28 @@ const Login = () => {
           <View style={styles.form}>
             <View>
               <Text style={styles.label}>Email</Text>
-              <TextInput
-                value={email}
-                onChangeText={(value) => {
-                  setEmail(value);
-                  if (errorMessage) setErrorMessage("");
-                }}
-                style={styles.input}
-                placeholder="vous@exemple.com"
-                placeholderTextColor={colors.gray400}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <View style={styles.inputShell}>
+                <MaterialCommunityIcons name="email-outline" size={18} color={colors.gray400} />
+                <TextInput
+                  value={email}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    if (errorMessage) setErrorMessage("");
+                  }}
+                  style={styles.input}
+                  placeholder="vous@exemple.com"
+                  placeholderTextColor={colors.gray400}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
             </View>
 
             <View>
               <Text style={styles.label}>Mot de passe</Text>
               <View style={styles.passwordWrapper}>
+                <MaterialCommunityIcons name="lock-outline" size={18} color={colors.gray400} />
                 <TextInput
                   value={password}
                   onChangeText={(value) => {
@@ -109,7 +115,7 @@ const Login = () => {
                 />
 
                 <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.passwordToggle}>
-                  <Text style={styles.passwordToggleText}>{showPassword ? "Masquer" : "Voir"}</Text>
+                  <MaterialCommunityIcons name={showPassword ? "eye-off-outline" : "eye-outline"} size={19} color={colors.primary} />
                 </Pressable>
               </View>
             </View>
@@ -167,23 +173,33 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: 22,
-    paddingVertical: 34,
+    paddingVertical: 38,
   },
   headerBlock: {
-    marginBottom: 36,
+    marginBottom: 34,
   },
   logoBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
+    width: 64,
+    height: 64,
+    borderRadius: 24,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 22,
     shadowColor: colors.ring,
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
+    shadowOpacity: 0.34,
+    shadowRadius: 22,
     shadowOffset: { width: 0, height: 12 },
+    borderWidth: 1,
+    borderColor: colors.primaryBorder,
+  },
+  logoInner: {
+    width: 44,
+    height: 44,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
   },
   logoText: {
     fontSize: 17,
@@ -195,11 +211,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     marginBottom: 8,
+    letterSpacing: 1,
   },
   title: {
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: "800",
+    fontSize: 32,
+    lineHeight: 38,
+    fontWeight: "900",
     color: colors.gray900,
   },
   subtitle: {
@@ -210,7 +227,7 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   form: {
-    gap: 16,
+    gap: 17,
   },
   label: {
     marginBottom: 8,
@@ -218,43 +235,48 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.gray700,
   },
-  input: {
+  inputShell: {
+    minHeight: 54,
     borderWidth: 1,
-    borderColor: colors.gray200,
-    backgroundColor: colors.gray50,
-    borderRadius: radii.lg,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
     paddingHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  input: {
+    flex: 1,
     paddingVertical: 15,
     fontSize: 15,
     color: colors.gray900,
   },
   passwordWrapper: {
-    position: "relative",
-    justifyContent: "center",
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    paddingLeft: 15,
+    paddingRight: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   passwordInput: {
-    borderWidth: 1,
-    borderColor: colors.gray200,
-    backgroundColor: colors.gray50,
-    borderRadius: radii.lg,
-    paddingLeft: 15,
-    paddingRight: 74,
+    flex: 1,
     paddingVertical: 15,
     fontSize: 15,
     color: colors.gray900,
   },
   passwordToggle: {
-    position: "absolute",
-    right: 10,
-    height: 36,
-    minWidth: 58,
+    width: 38,
+    height: 38,
+    borderRadius: radii.full,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
-  },
-  passwordToggleText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: "800",
   },
   recoveryActions: {
     flexDirection: "row",
@@ -262,11 +284,11 @@ const styles = StyleSheet.create({
   },
   recoveryButton: {
     flex: 1,
-    minHeight: 42,
-    borderRadius: radii.lg,
+    minHeight: 44,
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surfaceStrong,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -298,7 +320,7 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     marginTop: 2,
-    borderRadius: radii.lg,
+    borderRadius: radii.xl,
     backgroundColor: colors.primary,
     paddingVertical: 16,
     alignItems: "center",

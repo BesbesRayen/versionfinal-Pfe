@@ -2,17 +2,27 @@ package com.creaditn.creaditnbackend.kyc.service;
 
 import com.creaditn.creaditnbackend.dto.KycVerificationResultDto;
 import com.creaditn.creaditnbackend.entity.KycStatus;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.http.*;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
+import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Client for the Didit KYC verification API.
@@ -28,8 +38,14 @@ public class DiditClient {
     @Value("${didit.api.key:}")
     private String apiKey;
 
+    @Value("${didit.access-token:}")
+    private String accessToken;
+
     @Value("${didit.fallback-on-error:false}")
     private boolean fallbackOnError;
+
+    @Value("${kyc.dev-auto-approve:false}")
+    private boolean devAutoApprove;
 
     @Value("${kyc.face-match-manual-review-threshold:0.70}")
     private double faceMatchDeclineThreshold;
@@ -37,7 +53,10 @@ public class DiditClient {
     @Value("${kyc.liveness-manual-review-threshold:0.65}")
     private double livenessDeclineThreshold;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
+    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     /**
      * Verify identity documents via the Didit API.
@@ -51,6 +70,10 @@ public class DiditClient {
     ) {
         if (apiKey == null || apiKey.isBlank()) {
             log.error("Didit API key not configured - KYC cannot be auto-approved");
+            if (devAutoApprove) {
+                log.warn("kyc.dev-auto-approve=true - simulating KYC approval because Didit API key is missing");
+                return simulatedApproval(userId, "Local/demo KYC auto-approval: Didit API key is not configured");
+            }
             return providerUnavailable(userId, "Didit API key is not configured");
         }
 
@@ -58,6 +81,10 @@ public class DiditClient {
             return callDiditApi(userId, cinFrontPath, cinBackPath, selfiePath);
         } catch (Exception e) {
             log.error("Didit API call failed: {}", e.getMessage());
+            if (devAutoApprove) {
+                log.warn("kyc.dev-auto-approve=true - simulating KYC approval after provider failure");
+                return simulatedApproval(userId, "Local/demo KYC auto-approval: " + e.getMessage());
+            }
             if (fallbackOnError) {
                 log.warn("didit.fallback-on-error=true - routing KYC to manual review");
             }
@@ -71,35 +98,16 @@ public class DiditClient {
             Path cinBackPath,
             Path selfiePath
     ) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        // Didit v3 uses x-api-key header, not Bearer auth
-        headers.set("x-api-key", apiKey);
-
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("front_image", new FileSystemResource(cinFrontPath.toFile()));
+        List<MultipartPart> parts = new ArrayList<>();
+        parts.add(filePart("front_image", "cin_front.jpg", cinFrontPath));
         if (cinBackPath != null && cinBackPath.toFile().exists()) {
-            body.add("back_image", new FileSystemResource(cinBackPath.toFile()));
+            parts.add(filePart("back_image", "cin_back.jpg", cinBackPath));
         }
-        // Send selfie for server-side face comparison against the ID document photo
-        if (selfiePath != null && selfiePath.toFile().exists()) {
-            body.add("selfie_image", new FileSystemResource(selfiePath.toFile()));
-        }
-        body.add("perform_document_liveness", "true");
-        body.add("save_api_request", "true");
-        body.add("vendor_data", String.valueOf(userId));
+        parts.add(textPart("perform_document_liveness", "true"));
+        parts.add(textPart("save_api_request", "true"));
+        parts.add(textPart("vendor_data", String.valueOf(userId)));
 
-        HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
-
-        @SuppressWarnings("unchecked")
-        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                apiUrl + "/id-verification/",
-                HttpMethod.POST,
-                request,
-                (Class<Map<String, Object>>) (Class<?>) Map.class
-        );
-
-        Map<String, Object> responseBody = response.getBody();
+        Map<String, Object> responseBody = postMultipart(apiUrl + "/id-verification/", parts);
         if (responseBody == null) {
             throw new RuntimeException("Empty response from Didit API");
         }
@@ -120,6 +128,9 @@ public class DiditClient {
                 || "InReview".equalsIgnoreCase(statusStr)
                 || "manual_review".equalsIgnoreCase(statusStr)
                 || "review".equalsIgnoreCase(statusStr);
+        boolean declined = "Declined".equalsIgnoreCase(statusStr)
+                || "Rejected".equalsIgnoreCase(statusStr)
+                || "Failed".equalsIgnoreCase(statusStr);
 
         // Extract identity fields
         String extractedFirstName   = extractStringField(idVerification, "first_name", "name");
@@ -139,6 +150,7 @@ public class DiditClient {
                 "selfie.face_match_score", "biometric.face_match_score");
         }
         Double livenessScore = firstNumber(livenessResponse,
+                "passive_liveness.score", "passive_liveness.confidence",
                 "liveness.score", "liveness.confidence", "liveness.liveness_score");
         if (livenessScore == null) {
             livenessScore = firstNumber(responseBody,
@@ -154,6 +166,7 @@ public class DiditClient {
                 "id_verification.document.valid", "id_verification.document.authentic",
                 "id_verification.document_valid", "id_verification.document_authentic");
         Boolean livenessPassed = firstBoolean(livenessResponse,
+                "passive_liveness.status", "passive_liveness.passed", "passive_liveness.approved",
                 "liveness.passed", "liveness.approved", "liveness.is_live", "liveness.status");
         if (livenessPassed == null) {
             livenessPassed = firstBoolean(responseBody,
@@ -161,6 +174,7 @@ public class DiditClient {
                 "id_verification.liveness.passed", "id_verification.liveness_passed");
         }
         Boolean spoofDetected = firstBoolean(livenessResponse,
+                "passive_liveness.spoof_detected", "passive_liveness.spoofDetected",
                 "spoof_detected", "spoofDetected", "liveness.spoof_detected", "liveness.spoofDetected");
         if (spoofDetected == null) {
             spoofDetected = firstBoolean(responseBody,
@@ -177,6 +191,9 @@ public class DiditClient {
         String providerReason = extractStringField(responseBody, "reason", "message", "decline_reason", "warning")
                 != null ? extractStringField(responseBody, "reason", "message", "decline_reason", "warning")
                 : extractStringField(idVerification, "reason", "message", "decline_reason", "warning");
+        if (providerReason == null) {
+            providerReason = firstWarning(idVerification);
+        }
 
         if (documentAuthentic == null && approved) {
             documentAuthentic = true;
@@ -193,11 +210,25 @@ public class DiditClient {
         if (spoofDetected == null && livenessPassed != null) {
             spoofDetected = !livenessPassed;
         }
+        if (approved && Boolean.TRUE.equals(faceMatched) && faceMatchScore == null) {
+            faceMatchScore = 1.0;
+        }
+        if (approved && Boolean.TRUE.equals(livenessPassed) && livenessScore == null) {
+            livenessScore = 1.0;
+        }
+        if (approved && Boolean.FALSE.equals(spoofDetected) && livenessScore == null) {
+            livenessScore = 1.0;
+            livenessPassed = true;
+        }
 
         int confidence = providerConfidence != null
                 ? (int) Math.round(normalizeScore(providerConfidence) * 100)
                 : approved ? 90 : 30;
-        KycStatus providerStatus = approved ? KycStatus.PENDING : inReview ? KycStatus.PENDING_MANUAL_REVIEW : KycStatus.PENDING_MANUAL_REVIEW;
+        KycStatus providerStatus = approved
+                ? KycStatus.PENDING
+                : declined ? KycStatus.REJECTED
+                : inReview ? KycStatus.PENDING_MANUAL_REVIEW
+                : KycStatus.PENDING_MANUAL_REVIEW;
 
         return KycVerificationResultDto.builder()
                 .userId(userId)
@@ -227,22 +258,18 @@ public class DiditClient {
             throw new RuntimeException("Selfie image is required for passive liveness");
         }
 
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("user_image", new FileSystemResource(selfiePath.toFile()));
-        body.add("face_liveness_score_decline_threshold", String.valueOf(Math.round(livenessDeclineThreshold * 100)));
-        body.add("save_api_request", "true");
-        body.add("vendor_data", String.valueOf(userId));
-
-        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                apiUrl + "/passive-liveness/",
-                HttpMethod.POST,
-                new HttpEntity<>(body, multipartHeaders()),
-                (Class<Map<String, Object>>) (Class<?>) Map.class
+        List<MultipartPart> parts = List.of(
+                filePart("user_image", "selfie.jpg", selfiePath),
+                textPart("face_liveness_score_decline_threshold", String.valueOf(Math.round(livenessDeclineThreshold * 100))),
+                textPart("save_api_request", "true"),
+                textPart("vendor_data", String.valueOf(userId))
         );
-        if (response.getBody() == null) {
+
+        Map<String, Object> responseBody = postMultipart(apiUrl + "/passive-liveness/", parts);
+        if (responseBody == null) {
             throw new RuntimeException("Empty response from Didit passive liveness");
         }
-        return response.getBody();
+        return responseBody;
     }
 
     @SuppressWarnings("unchecked")
@@ -254,31 +281,97 @@ public class DiditClient {
             throw new RuntimeException("Reference identity image is required for face match");
         }
 
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("user_image", new FileSystemResource(selfiePath.toFile()));
-        body.add("ref_image", new FileSystemResource(referencePath.toFile()));
-        body.add("face_match_score_decline_threshold", String.valueOf(Math.round(faceMatchDeclineThreshold * 100)));
-        body.add("save_api_request", "true");
-        body.add("vendor_data", String.valueOf(userId));
-
-        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                apiUrl + "/face-match/",
-                HttpMethod.POST,
-                new HttpEntity<>(body, multipartHeaders()),
-                (Class<Map<String, Object>>) (Class<?>) Map.class
+        List<MultipartPart> parts = List.of(
+                filePart("user_image", "selfie.jpg", selfiePath),
+                filePart("ref_image", "cin_front.jpg", referencePath),
+                textPart("face_match_score_decline_threshold", String.valueOf(Math.round(faceMatchDeclineThreshold * 100))),
+                textPart("save_api_request", "true"),
+                textPart("vendor_data", String.valueOf(userId))
         );
-        if (response.getBody() == null) {
+
+        Map<String, Object> responseBody = postMultipart(apiUrl + "/face-match/", parts);
+        if (responseBody == null) {
             throw new RuntimeException("Empty response from Didit face match");
         }
-        return response.getBody();
+        return responseBody;
     }
 
-    private HttpHeaders multipartHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        headers.set("x-api-key", apiKey);
-        return headers;
+    private Map<String, Object> postMultipart(String url, List<MultipartPart> parts) {
+        try {
+            String boundary = "----CreadiTnDiditBoundary" + UUID.randomUUID();
+            byte[] body = buildMultipartBody(boundary, parts);
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(90))
+                    .header("x-api-key", apiKey)
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body));
+            if (accessToken != null && !accessToken.isBlank()) {
+                builder.header("Authorization", "Bearer " + accessToken);
+            }
+
+            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 400) {
+                throw new RuntimeException(response.statusCode() + " response from Didit: " + response.body());
+            }
+            return objectMapper.readValue(response.body(), new TypeReference<>() {});
+        } catch (IOException e) {
+            throw new RuntimeException("Could not call Didit multipart API", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Didit multipart API call interrupted", e);
+        }
     }
+
+    private byte[] buildMultipartBody(String boundary, List<MultipartPart> parts) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        for (MultipartPart part : parts) {
+            writeAscii(out, "--" + boundary + "\r\n");
+            if (part.filename() == null) {
+                writeAscii(out, "Content-Disposition: form-data; name=\"" + part.name() + "\"\r\n\r\n");
+                writeAscii(out, part.textValue() + "\r\n");
+            } else {
+                writeAscii(out, "Content-Disposition: form-data; name=\"" + part.name()
+                        + "\"; filename=\"" + part.filename() + "\"\r\n");
+                writeAscii(out, "Content-Type: " + part.contentType() + "\r\n\r\n");
+                out.write(part.bytes());
+                writeAscii(out, "\r\n");
+            }
+        }
+        writeAscii(out, "--" + boundary + "--\r\n");
+        return out.toByteArray();
+    }
+
+    private void writeAscii(ByteArrayOutputStream out, String value) throws IOException {
+        out.write(value.getBytes(StandardCharsets.US_ASCII));
+    }
+
+    private MultipartPart textPart(String name, String value) {
+        return new MultipartPart(name, null, null, null, value);
+    }
+
+    private MultipartPart filePart(String fieldName, String filename, Path path) {
+        try {
+            byte[] bytes = Files.readAllBytes(path);
+            return new MultipartPart(fieldName, filename, detectImageMediaType(path).toString(), bytes, null);
+        } catch (IOException e) {
+            throw new RuntimeException("Could not read KYC image " + filename, e);
+        }
+    }
+
+    private MediaType detectImageMediaType(Path path) {
+        try {
+            String contentType = Files.probeContentType(path);
+            if (contentType != null && !contentType.isBlank()) {
+                return MediaType.parseMediaType(contentType);
+            }
+        } catch (Exception ignored) {
+            // Use the default below.
+        }
+        return MediaType.IMAGE_JPEG;
+    }
+
+    private record MultipartPart(String name, String filename, String contentType, byte[] bytes, String textValue) {}
 
     /** Try multiple possible field names and return the first non-blank string value found. */
     private String extractStringField(Map<String, Object> map, String... keys) {
@@ -318,6 +411,24 @@ public class DiditClient {
                 .build();
     }
 
+    private KycVerificationResultDto simulatedApproval(Long userId, String reason) {
+        return KycVerificationResultDto.builder()
+                .userId(userId)
+                .status(KycStatus.PENDING)
+                .confidence(99)
+                .risk("local-demo-auto-approved")
+                .message("Local/demo KYC verification approved")
+                .faceMatchScore(0.99)
+                .livenessScore(0.99)
+                .spoofDetected(false)
+                .providerConfidence(0.99)
+                .providerReason(reason)
+                .documentAuthentic(true)
+                .livenessPassed(true)
+                .faceMatched(true)
+                .build();
+    }
+
     private Double firstNumber(Map<String, Object> map, String... paths) {
         for (String path : paths) {
             Object value = getPath(map, path);
@@ -350,6 +461,26 @@ public class DiditClient {
                 if (normalized.equals("false") || normalized.equals("declined") || normalized.equals("failed")
                         || normalized.equals("invalid") || normalized.equals("no")) {
                     return false;
+                }
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String firstWarning(Map<String, Object> map) {
+        Object warnings = map.get("warnings");
+        if (warnings instanceof Iterable<?> iterable) {
+            for (Object warning : iterable) {
+                if (warning instanceof Map<?, ?> warningMap) {
+                    Object shortDescription = ((Map<String, Object>) warningMap).get("short_description");
+                    if (shortDescription instanceof String s && !s.isBlank()) {
+                        return s.trim();
+                    }
+                    Object longDescription = ((Map<String, Object>) warningMap).get("long_description");
+                    if (longDescription instanceof String s && !s.isBlank()) {
+                        return s.trim();
+                    }
                 }
             }
         }

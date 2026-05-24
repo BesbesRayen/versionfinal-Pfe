@@ -1,10 +1,11 @@
 package com.creaditn.creaditnbackend.dto;
 
 import com.creaditn.creaditnbackend.entity.EmploymentStatus;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -17,7 +18,8 @@ import java.math.BigDecimal;
 public class FinancialProfileRequest {
 
     @NotNull
-    @Positive
+    @DecimalMin(value = "100.00", message = "Monthly salary must be between 100 and 5000 DT")
+    @DecimalMax(value = "5000.00", message = "Monthly salary must be between 100 and 5000 DT")
     private BigDecimal monthlySalary;
 
     @NotNull

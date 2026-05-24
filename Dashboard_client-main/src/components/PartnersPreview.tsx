@@ -3,7 +3,7 @@ import { ArrowRight, MapPin } from 'lucide-react';
 import { boutiques } from '@/data/boutiques';
 
 export default function PartnersPreview() {
-  const previewBoutiques = boutiques.filter((b) => b.conventionActive).slice(0, 6);
+  const previewBoutiques = boutiques.filter((b) => b.conventionActive !== false).slice(0, 6);
 
   return (
     <section className="section-padding bg-[#0b1120]" id="partners">

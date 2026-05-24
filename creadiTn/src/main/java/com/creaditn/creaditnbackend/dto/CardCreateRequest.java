@@ -24,7 +24,8 @@ public class CardCreateRequest {
     @NotNull
     private CardType type;
 
-    @Pattern(regexp = "^\\d{3,4}$", message = "CVV must be 3 or 4 digits")
+    @NotBlank
+    @Pattern(regexp = "^\\d{3}$", message = "CVV must be exactly 3 digits")
     private String cvv;
 
     private Boolean defaultCard;

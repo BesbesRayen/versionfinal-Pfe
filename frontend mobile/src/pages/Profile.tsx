@@ -218,16 +218,16 @@ const Profile = () => {
       }
 
       Alert.alert(
-        value ? "Auto-payment active" : "Auto-payment inactive",
+        value ? "Paiement automatique actif" : "Paiement automatique inactif",
         value && paidInstallments > 0
-          ? `${response.message || "Auto-payment is now active."} ${paidInstallments} paiement(s) automatique(s) traite(s).`
-          : response.message || (value ? "Auto-payment is now active." : "Auto-payment is now inactive."),
+          ? `${response.message || "Le paiement automatique est actif."} ${paidInstallments} paiement(s) automatique(s) traite(s).`
+          : response.message || (value ? "Le paiement automatique est actif." : "Le paiement automatique est inactif."),
       );
     } catch (error) {
       setAutopayEnabled(!value);
       Alert.alert(
-        "Auto-payment update failed",
-        error instanceof Error ? error.message : "Please try again.",
+        "Mise a jour impossible",
+        error instanceof Error ? error.message : "Veuillez reessayer.",
       );
     } finally {
       setSavingAutopay(false);
@@ -240,7 +240,11 @@ const Profile = () => {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadProfile(true); }} tintColor={colors.primary} />}
       >
-        <Text style={styles.title}>Profil</Text>
+        <View style={styles.pageHeader}>
+          <Text style={styles.eyebrow}>Compte CreditTN</Text>
+          <Text style={styles.title}>Profil</Text>
+          <Text style={styles.headerSub}>Gerez votre identite, vos paiements et vos preferences en toute securite.</Text>
+        </View>
 
         {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
@@ -431,6 +435,32 @@ const Profile = () => {
             <MaterialCommunityIcons name="chevron-right" size={18} color={colors.gray400} />
           </Pressable>
 
+          <Pressable style={styles.menuRow} onPress={() => navigate("ForgotPassword")}>
+            <View style={styles.menuRowLeft}>
+              <View style={styles.menuIconBox}>
+                <MaterialCommunityIcons name="lock-reset" size={18} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={styles.menuText}>Mot de passe oublie</Text>
+                <Text style={styles.menuSub}>Recevoir un code de reinitialisation</Text>
+              </View>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={colors.gray400} />
+          </Pressable>
+
+          <Pressable style={styles.menuRow} onPress={() => navigate("ForgotEmail")}>
+            <View style={styles.menuRowLeft}>
+              <View style={styles.menuIconBox}>
+                <MaterialCommunityIcons name="email-search-outline" size={18} color={colors.primary} />
+              </View>
+              <View>
+                <Text style={styles.menuText}>Email oublie</Text>
+                <Text style={styles.menuSub}>Retrouver ou modifier votre email</Text>
+              </View>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={colors.gray400} />
+          </Pressable>
+
           <Pressable style={styles.menuRow} onPress={() => navigate("CreadiScore")}>
             <View style={styles.menuRowLeft}>
               <View style={styles.menuIconBox}>
@@ -563,24 +593,27 @@ const Profile = () => {
 };
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100, gap: 14 },
-  title: { fontSize: 22, fontWeight: "700", color: colors.gray900 },
+  content: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 112, gap: 15 },
+  pageHeader: { gap: 5, marginBottom: 2 },
+  eyebrow: { fontSize: 11, color: colors.primary, fontWeight: "900", textTransform: "uppercase", letterSpacing: 1 },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: "900", color: colors.gray900 },
+  headerSub: { maxWidth: 330, fontSize: 13, lineHeight: 19, color: colors.gray500, fontWeight: "600" },
 
-  userCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xl, padding: 16, flexDirection: "row", gap: 12, alignItems: "center" },
+  userCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xxl, padding: 17, flexDirection: "row", gap: 13, alignItems: "center", shadowColor: colors.shadow, shadowOpacity: 0.24, shadowRadius: 22, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
   avatarWrap: { position: "relative" },
-  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  avatarImage: { width: 56, height: 56, borderRadius: 28 },
-  avatarText: { color: colors.white, fontSize: 20, fontWeight: "700" },
-  cameraIcon: { position: "absolute", bottom: -2, right: -2, width: 22, height: 22, borderRadius: 11, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.card },
+  avatar: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.primaryBorder },
+  avatarImage: { width: 62, height: 62, borderRadius: 31 },
+  avatarText: { color: colors.white, fontSize: 21, fontWeight: "900" },
+  cameraIcon: { position: "absolute", bottom: -2, right: -2, width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.card },
   avatarOverlay: { ...StyleSheet.absoluteFillObject, borderRadius: 28, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center" },
   avatarOverlayText: { color: colors.white, fontSize: 14, fontWeight: "700" },
-  userName: { fontSize: 16, fontWeight: "700", color: colors.gray900 },
-  userMail: { marginTop: 2, fontSize: 12, color: colors.gray500 },
-  payerBadge: { marginTop: 6, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: radii.sm, alignSelf: "flex-start" },
-  payerBadgeText: { fontSize: 10, fontWeight: "700" },
-  kycBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radii.sm },
-  kycBadgeText: { fontSize: 10, fontWeight: "700" },
-  profileFinanceCard: { backgroundColor: colors.card, borderRadius: radii.xxl, borderWidth: 1, borderColor: colors.cardBorder, padding: 16, gap: 14, shadowColor: colors.shadow, shadowOpacity: 0.25, shadowRadius: 20, shadowOffset: { width: 0, height: 12 }, elevation: 5 },
+  userName: { fontSize: 17, fontWeight: "900", color: colors.gray900 },
+  userMail: { marginTop: 3, fontSize: 12, color: colors.gray500, fontWeight: "600" },
+  payerBadge: { marginTop: 8, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 9, paddingVertical: 5, borderRadius: radii.full, alignSelf: "flex-start", borderWidth: 1, borderColor: colors.cardBorder },
+  payerBadgeText: { fontSize: 10, fontWeight: "900" },
+  kycBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, paddingVertical: 6, borderRadius: radii.full, borderWidth: 1, borderColor: colors.cardBorder },
+  kycBadgeText: { fontSize: 10, fontWeight: "900" },
+  profileFinanceCard: { backgroundColor: colors.card, borderRadius: radii.xxl, borderWidth: 1, borderColor: colors.cardBorder, padding: 17, gap: 15, shadowColor: colors.shadow, shadowOpacity: 0.25, shadowRadius: 22, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
   profileFinanceHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
   financeEyebrow: { fontSize: 10, color: colors.primary, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.6 },
   financeAvailable: { marginTop: 6, fontSize: 30, color: colors.gray900, fontWeight: "900", fontVariant: ["tabular-nums"] },
@@ -588,30 +621,30 @@ const styles = StyleSheet.create({
   financeStats: { flexDirection: "row", gap: 10 },
 
   // Account status card
-  statusCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xl, padding: 16, gap: 12 },
+  statusCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xxl, padding: 16, gap: 12 },
   statusRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   statusLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
   statusLabel: { fontSize: 10, color: colors.gray500, fontWeight: "700", textTransform: "uppercase" },
   statusValue: { fontSize: 15, fontWeight: "800", color: colors.gray900, marginTop: 2 },
   statusPct: { fontSize: 12, color: colors.gray500, fontWeight: "700" },
-  nextRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.surface, borderRadius: radii.md, padding: 10 },
+  nextRow: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.surface, borderRadius: radii.lg, padding: 12, borderWidth: 1, borderColor: colors.cardBorder },
   nextRowOverdue: { backgroundColor: colors.errorLight },
   nextLabel: { fontSize: 11, color: colors.gray500, fontWeight: "600" },
   nextDate: { fontSize: 13, fontWeight: "700", color: colors.gray900, marginTop: 1 },
   nextAmount: { fontSize: 16, fontWeight: "800", color: colors.primary },
-  statusHistBtn: { backgroundColor: colors.primary + "18", borderRadius: radii.md, paddingVertical: 9, alignItems: "center" },
-  statusHistBtnText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
-  sectionCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xl, overflow: "hidden", paddingTop: 14 },
-  sectionTitle: { fontSize: 11, fontWeight: "800", color: colors.gray500, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, paddingHorizontal: 14 },
+  statusHistBtn: { backgroundColor: colors.primarySoft, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.primaryBorder, paddingVertical: 11, alignItems: "center" },
+  statusHistBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900" },
+  sectionCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xxl, overflow: "hidden", paddingTop: 15, shadowColor: colors.shadow, shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 3 },
+  sectionTitle: { fontSize: 11, fontWeight: "900", color: colors.gray500, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, paddingHorizontal: 16 },
   sectionSub: { fontSize: 12, color: colors.gray500, lineHeight: 18 },
 
-  menuRow: { paddingHorizontal: 14, paddingVertical: 13, borderTopWidth: 1, borderTopColor: colors.cardBorder, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  menuRow: { paddingHorizontal: 16, paddingVertical: 14, borderTopWidth: 1, borderTopColor: colors.cardBorder, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   menuRowLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1, marginRight: 8 },
-  menuIconBox: { width: 34, height: 34, borderRadius: radii.md, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
-  menuText: { fontSize: 14, color: colors.gray900, fontWeight: "600" },
-  menuSub: { fontSize: 11, color: colors.gray500, marginTop: 1 },
+  menuIconBox: { width: 36, height: 36, borderRadius: 14, backgroundColor: colors.surfaceStrong, borderWidth: 1, borderColor: colors.cardBorder, alignItems: "center", justifyContent: "center" },
+  menuText: { fontSize: 14, color: colors.gray900, fontWeight: "800" },
+  menuSub: { fontSize: 11, color: colors.gray500, marginTop: 2, fontWeight: "600" },
 
-  setupCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xl, padding: 16, gap: 10 },
+  setupCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xxl, padding: 16, gap: 10 },
   setupRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   setupDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.gray300, alignItems: "center", justifyContent: "center" },
   setupDotDone: { backgroundColor: colors.success, borderColor: colors.success },
@@ -622,19 +655,19 @@ const styles = StyleSheet.create({
   setupBadgeMissing: { backgroundColor: colors.warningLight },
   setupBadgeText: { fontSize: 10, fontWeight: "800" },
 
-  logoutButton: { borderRadius: radii.lg, borderWidth: 1, borderColor: colors.errorBorder, paddingVertical: 14, alignItems: "center", backgroundColor: colors.card, flexDirection: "row", justifyContent: "center", gap: 8 },
-  logoutText: { color: colors.error, fontSize: 14, fontWeight: "700" },
-  deleteButton: { borderRadius: radii.lg, borderWidth: 1, borderColor: colors.errorBorder, paddingVertical: 14, alignItems: "center", backgroundColor: "#2d1515", flexDirection: "row", justifyContent: "center", gap: 8, marginTop: 8 },
-  deleteText: { color: colors.error, fontSize: 14, fontWeight: "700" },
+  logoutButton: { borderRadius: radii.xl, borderWidth: 1, borderColor: colors.errorBorder, paddingVertical: 14, alignItems: "center", backgroundColor: colors.card, flexDirection: "row", justifyContent: "center", gap: 8 },
+  logoutText: { color: colors.error, fontSize: 14, fontWeight: "800" },
+  deleteButton: { borderRadius: radii.xl, borderWidth: 1, borderColor: colors.errorBorder, paddingVertical: 14, alignItems: "center", backgroundColor: colors.errorLight, flexDirection: "row", justifyContent: "center", gap: 8, marginTop: 8 },
+  deleteText: { color: colors.error, fontSize: 14, fontWeight: "800" },
   errorText: { fontSize: 12, color: colors.error },
   emptyWrap: { flex: 1, justifyContent: "center", paddingHorizontal: 20, gap: 12 },
 
   // ── Delete confirmation modal ──
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.75)", alignItems: "center", justifyContent: "center", padding: 24 },
-  modalCard: { width: "100%", backgroundColor: colors.card, borderRadius: 20, padding: 24, gap: 14, borderWidth: 1, borderColor: colors.errorBorder },
+  modalCard: { width: "100%", backgroundColor: colors.card, borderRadius: radii.xxl, padding: 24, gap: 14, borderWidth: 1, borderColor: colors.errorBorder },
   modalTitle: { fontSize: 18, fontWeight: "900", color: colors.error, textAlign: "center" },
   modalBody: { fontSize: 14, color: colors.gray700, textAlign: "center", lineHeight: 22 },
-  modalInput: { height: 50, borderRadius: 12, borderWidth: 1.5, borderColor: colors.gray300, paddingHorizontal: 14, fontSize: 16, color: colors.gray900, backgroundColor: colors.gray100, textAlign: "center" },
+  modalInput: { height: 52, borderRadius: radii.lg, borderWidth: 1.5, borderColor: colors.gray300, paddingHorizontal: 14, fontSize: 16, color: colors.gray900, backgroundColor: colors.surface, textAlign: "center" },
   modalInputOk: { borderColor: colors.error },
   modalActions: { flexDirection: "row", gap: 10 },
   modalCancelBtn: { flex: 1, borderRadius: 12, borderWidth: 1.5, borderColor: colors.gray300, paddingVertical: 12, alignItems: "center" },

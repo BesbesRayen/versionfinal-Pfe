@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -57,7 +58,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach(error -> {
-            String fieldName = ((FieldError) error).getField();
+            String fieldName = error instanceof FieldError fieldError
+                    ? fieldError.getField()
+                    : error.getObjectName();
             String message = error.getDefaultMessage();
             errors.put(fieldName, message);
         });
@@ -95,6 +98,12 @@ public class GlobalExceptionHandler {
         log.warn("Database constraint violation", ex);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("Les donnees envoyees sont invalides ou deja utilisees."));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse> handleNoResourceFound(NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error("Endpoint not found. Please update and restart the backend service."));
     }
 
     @ExceptionHandler(Exception.class)

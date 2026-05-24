@@ -63,6 +63,11 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getUserPayments(userId));
     }
 
+    @GetMapping("/receipts")
+    public ResponseEntity<List<PaymentDto>> getReceipts(@RequestParam Long userId) {
+        return ResponseEntity.ok(paymentService.getUserReceipts(userId));
+    }
+
     @PostMapping({"/payAll", "/pay-all"})
     public ResponseEntity<PayAllResponse> payAllInstallments(@RequestParam Long userId) {
         return ResponseEntity.ok(paymentService.payAllInstallments(userId));

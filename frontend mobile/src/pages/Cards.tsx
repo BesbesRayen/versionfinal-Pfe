@@ -19,11 +19,13 @@ import BottomNav from "@/components/BottomNav";
 import { useAppNavigation } from "@/lib/app-navigation";
 import {
   addCard,
-  blockCard,
   Card,
   CreateCardPayload,
   CardType,
+  deleteCard,
   getCards,
+  getMyInstallments,
+  replaceCard,
   setDefaultCard,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -154,6 +156,36 @@ const AnimatedCardWidget = ({ card }: { card: Card }) => {
     </View>
   );
 };
+
+const isValidLuhn = (value: string) => {
+  let sum = 0;
+  let shouldDouble = false;
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    let digit = Number(value[index]);
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+  return value.length > 0 && sum % 10 === 0;
+};
+
+const ValidationLine = ({ state, text }: { state: "success" | "warning" | "error"; text: string }) => {
+  const color = state === "success" ? colors.success : state === "warning" ? colors.warning : colors.error;
+  return (
+    <View style={styles.validationLine}>
+      <MaterialCommunityIcons
+        name={state === "success" ? "check-circle-outline" : state === "warning" ? "alert-circle-outline" : "close-circle-outline"}
+        size={13}
+        color={color}
+      />
+      <Text style={[styles.validationText, { color }]}>{text}</Text>
+    </View>
+  );
+};
+
 const Cards = () => {
   const { user } = useAuth();
   const { navigate } = useAppNavigation();
@@ -163,6 +195,11 @@ const Cards = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [modalMode, setModalMode] = useState<"add" | "replace">("add");
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Card | null>(null);
+  const [pendingReplacePayload, setPendingReplacePayload] = useState<(CreateCardPayload & { password: string }) | null>(null);
+  const [unpaidCount, setUnpaidCount] = useState(0);
 
   const [cardDigits, setCardDigits] = useState("");
   const [expiryDigits, setExpiryDigits] = useState("");
@@ -170,6 +207,8 @@ const Cards = () => {
   const [cardholderName, setCardholderName] = useState("");
   const [cardType, setCardType] = useState<CardType>("VISA");
   const [makeDefault, setMakeDefault] = useState(false);
+  const [verificationPassword, setVerificationPassword] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const expiryRef = useRef<TextInput>(null);
@@ -181,8 +220,12 @@ const Cards = () => {
     setLoading(true);
     setErrorMessage("");
     try {
-      const data = await getCards(user.userId);
+      const [data, installments] = await Promise.all([
+        getCards(user.userId),
+        getMyInstallments(user.userId).catch(() => []),
+      ]);
       setCards(data);
+      setUnpaidCount(installments.filter((item) => item.status !== "PAID").length);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : "Could not load cards");
     } finally {
@@ -196,43 +239,96 @@ const Cards = () => {
     if (digits.length < 4) return "Expiry must be complete (MM/YY)";
     const mm = parseInt(digits.slice(0, 2), 10);
     const yy = parseInt(digits.slice(2, 4), 10);
-    const currentYY = new Date().getFullYear() % 100;
+    const now = new Date();
+    const currentYY = now.getFullYear() % 100;
+    const currentMonth = now.getMonth() + 1;
     if (mm < 1 || mm > 12) return "Invalid month - must be 01 to 12";
     if (yy < currentYY) return `Card expired - year must be ${currentYY} or later`;
+    if (yy === currentYY && mm < currentMonth) return "Card expiry date must be in the future";
     return null;
   };
 
-  const handleAddCard = async () => {
+  const validateCardNumber = (digits: string): string | null => {
+    if (!/^\d{13,19}$/.test(digits)) return "Card number must contain 13 to 19 digits";
+    if (!isValidLuhn(digits)) return "Card number is invalid";
+    return null;
+  };
+
+  const cardNumberError = cardDigits.length > 0 ? validateCardNumber(cardDigits) : null;
+  const expiryErrorLive = expiryDigits.length > 0 ? validateExpiry(expiryDigits) : null;
+  const cvvErrorLive = cvv.length > 0 && !/^\d{3}$/.test(cvv) ? "CVV must be exactly 3 digits" : null;
+  const hasPendingPayments = unpaidCount > 0;
+  const pendingPaymentMessage = "You must complete all remaining payments before changing this card.";
+
+  const handleSubmitCard = async () => {
     if (!user) return;
-    if (!/^\d{13,19}$/.test(cardDigits)) {
-      setErrorMessage("Invalid card number (13-19 digits required)");
+    const cardError = validateCardNumber(cardDigits);
+    if (cardError) {
+      setErrorMessage(cardError);
       return;
     }
     const expiryError = validateExpiry(expiryDigits);
     if (expiryError) { setErrorMessage(expiryError); return; }
-    if (!/^\d{3,4}$/.test(cvv)) {
-      setErrorMessage("CVV must be 3 or 4 digits");
+    if (!/^\d{3}$/.test(cvv)) {
+      setErrorMessage("CVV must be exactly 3 digits");
+      return;
+    }
+    if (modalMode === "replace" && !verificationPassword.trim()) {
+      setErrorMessage("Password verification is required before replacing your card");
+      return;
+    }
+    if (modalMode === "replace" && hasPendingPayments) {
+      setErrorMessage(pendingPaymentMessage);
+      return;
+    }
+
+    setErrorMessage("");
+    const payload: CreateCardPayload = {
+      cardNumber: cardDigits,
+      expiryDate: `${expiryDigits.slice(0, 2)}/${expiryDigits.slice(2)}`,
+      cardholderName: cardholderName.trim() || undefined,
+      type: cardType,
+      cvv,
+      defaultCard: makeDefault || cards.length === 0,
+    };
+
+    if (modalMode === "replace") {
+      setPendingReplacePayload({ ...payload, password: verificationPassword });
       return;
     }
 
     setSubmitting(true);
-    setErrorMessage("");
     try {
-      const payload: CreateCardPayload = {
-        cardNumber: cardDigits,
-        expiryDate: `${expiryDigits.slice(0, 2)}/${expiryDigits.slice(2)}`,
-        cardholderName: cardholderName.trim() || undefined,
-        type: cardType,
-        cvv,
-        defaultCard: makeDefault || cards.length === 0,
-      };
-      await addCard(user.userId, payload);
-      setSuccessMessage("Card added successfully");
+        await addCard(user.userId, payload);
+        setSuccessMessage("Card added successfully");
       setShowAddModal(false);
       resetForm();
       await loadCards();
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : "Failed to add card");
+      setErrorMessage(e instanceof Error ? e.message : "Failed to save card");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const confirmReplace = async () => {
+    if (!user || !selectedCard || !pendingReplacePayload) return;
+    if (hasPendingPayments) {
+      setPendingReplacePayload(null);
+      setErrorMessage(pendingPaymentMessage);
+      return;
+    }
+    setSubmitting(true);
+    setErrorMessage("");
+    try {
+      await replaceCard(user.userId, selectedCard.id, pendingReplacePayload);
+      setSuccessMessage("Card replaced and set as default");
+      setPendingReplacePayload(null);
+      setShowAddModal(false);
+      resetForm();
+      await loadCards();
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : "Failed to replace card");
     } finally {
       setSubmitting(false);
     }
@@ -250,21 +346,53 @@ const Cards = () => {
     }
   };
 
-  const handleBlock = async (cardId: number) => {
-    if (!user) return;
+  const handleDelete = async () => {
+    if (!user || !deleteTarget) return;
+    if (hasPendingPayments) {
+      setErrorMessage(pendingPaymentMessage);
+      return;
+    }
+    if (!deletePassword.trim()) {
+      setErrorMessage("Password verification is required before deleting your card");
+      return;
+    }
+    setSubmitting(true);
     setErrorMessage(""); setSuccessMessage("");
     try {
-      await blockCard(user.userId, cardId);
-      setSuccessMessage("Card blocked");
+      await deleteCard(user.userId, deleteTarget.id, { password: deletePassword });
+      setSuccessMessage("Card removed successfully");
+      setDeleteTarget(null);
+      setDeletePassword("");
       await loadCards();
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : "Failed to block card");
+      setErrorMessage(e instanceof Error ? e.message : "Failed to delete card");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const resetForm = () => {
     setCardDigits(""); setExpiryDigits(""); setCvv("");
-    setCardholderName(""); setCardType("VISA"); setMakeDefault(false); setErrorMessage("");
+    setCardholderName(""); setCardType("VISA"); setMakeDefault(false);
+    setVerificationPassword(""); setSelectedCard(null); setErrorMessage("");
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setModalMode("add");
+    setShowAddModal(true);
+  };
+
+  const openReplaceModal = (card: Card) => {
+    if (hasPendingPayments) {
+      setErrorMessage(pendingPaymentMessage);
+      return;
+    }
+    resetForm();
+    setModalMode("replace");
+    setSelectedCard(card);
+    setMakeDefault(true);
+    setShowAddModal(true);
   };
 
   const cardDisplay = cardDigits.replace(/(\d{4})(?=\d)/g, "$1 ");
@@ -276,12 +404,14 @@ const Cards = () => {
     : expiryDigits;
 
   const handleCardChange = (text: string) => {
-    const raw = text.replace(/\D/g, "").slice(0, 16);
+    setErrorMessage("");
+    const raw = text.replace(/\D/g, "").slice(0, 19);
     setCardDigits(raw);
     if (raw.length === 16) expiryRef.current?.focus();
   };
 
   const handleExpiryChange = (text: string) => {
+    setErrorMessage("");
     const raw = text.replace(/\D/g, "").slice(0, 4);
     setExpiryDigits(raw);
     if (raw.length === 4) nameRef.current?.focus();
@@ -303,11 +433,17 @@ const Cards = () => {
   return (
     <MobileLayout noPadding>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Payment Methods</Text>
-        <Text style={styles.subtitle}>Manage your linked cards</Text>
+        <Text style={styles.title}>Insérer votre carte</Text>
+        <Text style={styles.subtitle}>Ajoutez, remplacez ou supprimez votre carte en toute sécurité.</Text>
 
         {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
         {!!successMessage && <Text style={styles.successText}>{successMessage}</Text>}
+        {hasPendingPayments && (
+          <View style={styles.warningBanner}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={18} color={colors.warning} />
+            <Text style={styles.warningBannerText}>{pendingPaymentMessage}</Text>
+          </View>
+        )}
         {loading && <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} />}
 
         {cards.map((card) => (
@@ -321,9 +457,29 @@ const Cards = () => {
                 </Pressable>
               )}
               {card.status === "ACTIVE" && (
-                <Pressable style={[styles.actionBtn, styles.actionBtnDanger]} onPress={() => handleBlock(card.id)}>
-                  <MaterialCommunityIcons name="lock-outline" size={14} color={colors.error} />
-                  <Text style={[styles.actionBtnText, { color: colors.error }]}>Block</Text>
+                <Pressable
+                  style={[styles.actionBtn, hasPendingPayments && styles.actionBtnDisabled]}
+                  onPress={() => openReplaceModal(card)}
+                  disabled={hasPendingPayments}
+                >
+                  <MaterialCommunityIcons name="credit-card-refresh-outline" size={14} color={hasPendingPayments ? colors.gray500 : colors.primary} />
+                  <Text style={[styles.actionBtnText, hasPendingPayments && styles.actionBtnDisabledText]}>Update Card</Text>
+                </Pressable>
+              )}
+              {card.status === "ACTIVE" && (
+                <Pressable
+                  style={[styles.actionBtn, styles.actionBtnDanger, hasPendingPayments && styles.actionBtnDisabled]}
+                  onPress={() => {
+                    if (hasPendingPayments) {
+                      setErrorMessage(pendingPaymentMessage);
+                      return;
+                    }
+                    setDeleteTarget(card); setDeletePassword(""); setErrorMessage("");
+                  }}
+                  disabled={hasPendingPayments}
+                >
+                  <MaterialCommunityIcons name="trash-can-outline" size={14} color={hasPendingPayments ? colors.gray500 : colors.error} />
+                  <Text style={[styles.actionBtnText, { color: hasPendingPayments ? colors.gray500 : colors.error }]}>Delete Card</Text>
                 </Pressable>
               )}
             </View>
@@ -333,16 +489,16 @@ const Cards = () => {
         {!loading && cards.length === 0 && (
           <View style={styles.emptyCard}>
             <MaterialCommunityIcons name="credit-card-plus-outline" size={40} color={colors.gray400} />
-            <Text style={styles.emptyCardTitle}>No cards yet</Text>
+            <Text style={styles.emptyCardTitle}>No card inserted</Text>
             <Text style={styles.emptyCardSub}>
-              Add a card to access credit and payments.
+              Insert a new card to continue using BNPL and payment features.
             </Text>
           </View>
         )}
 
-        <Pressable style={styles.primaryButton} onPress={() => { resetForm(); setShowAddModal(true); }}>
+        <Pressable style={styles.primaryButton} onPress={openAddModal}>
           <MaterialCommunityIcons name="plus" size={16} color={colors.white} />
-          <Text style={styles.primaryButtonText}>Add new card</Text>
+          <Text style={styles.primaryButtonText}>Insert new card</Text>
         </Pressable>
       </ScrollView>
       <BottomNav />
@@ -362,7 +518,7 @@ const Cards = () => {
           <Pressable style={styles.modalOverlay} onPress={() => {}} accessible={false}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Add Card</Text>
+                <Text style={styles.modalTitle}>{modalMode === "replace" ? "Update Card" : "Insert Card"}</Text>
                 <Pressable onPress={() => { setShowAddModal(false); resetForm(); }}>
                   <MaterialCommunityIcons name="close" size={20} color={colors.gray500} />
                 </Pressable>
@@ -382,11 +538,17 @@ const Cards = () => {
                     keyboardType="number-pad"
                     value={cardDisplay}
                     onChangeText={handleCardChange}
-                    maxLength={19}
+                    maxLength={23}
                     returnKeyType="next"
-                    onSubmitEditing={() => expiryRef.current?.focus()}
-                    blurOnSubmit={false}
+                      onSubmitEditing={() => expiryRef.current?.focus()}
+                      blurOnSubmit={false}
                   />
+                  {cardDigits.length > 0 && (
+                    <ValidationLine
+                      state={cardNumberError ? "error" : "success"}
+                      text={cardNumberError ?? "Valid card number"}
+                    />
+                  )}
                 </View>
 
                 {/* Expiry + CVV */}
@@ -406,6 +568,9 @@ const Cards = () => {
                       onSubmitEditing={() => nameRef.current?.focus()}
                       blurOnSubmit={false}
                     />
+                    {expiryDigits.length > 0 && (
+                      <ValidationLine state={expiryErrorLive ? "error" : "success"} text={expiryErrorLive ?? "Valid expiry date"} />
+                    )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fieldLabel}>CVV</Text>
@@ -417,12 +582,15 @@ const Cards = () => {
                       keyboardType="number-pad"
                       secureTextEntry
                       value={cvv}
-                      onChangeText={(t) => setCvv(t.replace(/\D/g, "").slice(0, 4))}
-                      maxLength={4}
+                      onChangeText={(t) => { setErrorMessage(""); setCvv(t.replace(/\D/g, "").slice(0, 3)); }}
+                      maxLength={3}
                       returnKeyType="next"
                       onSubmitEditing={() => nameRef.current?.focus()}
                       blurOnSubmit={false}
                     />
+                    {cvv.length > 0 && (
+                      <ValidationLine state={cvvErrorLive ? "error" : "success"} text={cvvErrorLive ?? "Valid CVV"} />
+                    )}
                   </View>
                 </View>
 
@@ -436,7 +604,7 @@ const Cards = () => {
                     placeholderTextColor={colors.gray500}
                     autoCapitalize="words"
                     value={cardholderName}
-                    onChangeText={setCardholderName}
+                    onChangeText={(text) => { setErrorMessage(""); setCardholderName(text); }}
                     returnKeyType="next"
                     onSubmitEditing={() => cvvRef.current?.focus()}
                     blurOnSubmit={false}
@@ -464,34 +632,124 @@ const Cards = () => {
                   </View>
                 </View>
 
-                {/* Default toggle */}
-                <Pressable style={styles.checkRow} onPress={() => setMakeDefault(!makeDefault)}>
-                  <View style={[styles.checkbox, makeDefault && styles.checkboxActive]}>
-                    {makeDefault && <MaterialCommunityIcons name="check" size={12} color={colors.white} />}
+                {modalMode === "replace" && (
+                  <View>
+                    <Text style={styles.fieldLabel}>PASSWORD VERIFICATION</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Confirm your password"
+                      placeholderTextColor={colors.gray500}
+                      secureTextEntry
+                      value={verificationPassword}
+                      onChangeText={(text) => { setErrorMessage(""); setVerificationPassword(text); }}
+                    />
                   </View>
-                  <Text style={styles.checkLabel}>Set as default card</Text>
-                </Pressable>
+                )}
+
+                {modalMode === "add" ? (
+                  <Pressable style={styles.checkRow} onPress={() => setMakeDefault(!makeDefault)}>
+                    <View style={[styles.checkbox, makeDefault && styles.checkboxActive]}>
+                      {makeDefault && <MaterialCommunityIcons name="check" size={12} color={colors.white} />}
+                    </View>
+                    <Text style={styles.checkLabel}>Set as default card</Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.securityBanner}>
+                    <MaterialCommunityIcons name="shield-check-outline" size={18} color={colors.primary} />
+                    <Text style={styles.securityBannerText}>Updated cards become default automatically after confirmation.</Text>
+                  </View>
+                )}
 
                 {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
                 <Text style={styles.securityNote}>
-                  CVV never stored · Card number encrypted
+                  CVV never stored · Card number encrypted · Luhn checked
                 </Text>
 
                 <Pressable
                   style={[styles.primaryButton, submitting && { opacity: 0.6 }]}
-                  onPress={handleAddCard}
+                  onPress={handleSubmitCard}
                   disabled={submitting}
                 >
                   {submitting
                     ? <ActivityIndicator color={colors.white} size="small" />
-                    : <Text style={styles.primaryButtonText}>Add Card</Text>
+                    : <Text style={styles.primaryButtonText}>{modalMode === "replace" ? "Review Update" : "Insert Card"}</Text>
                   }
                 </Pressable>
               </ScrollView>
             </View>
           </Pressable>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={!!deleteTarget}
+        animationType="fade"
+        transparent
+        onRequestClose={() => { setDeleteTarget(null); setDeletePassword(""); }}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmCard}>
+            <View style={styles.confirmIcon}>
+              <MaterialCommunityIcons name="trash-can-outline" size={24} color={colors.error} />
+            </View>
+            <Text style={styles.confirmTitle}>Delete Card</Text>
+            <Text style={styles.confirmText}>
+              This permanently removes {deleteTarget?.maskedNumber ?? "this card"}. You will need to insert a new card to continue using payment features.
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Confirm your password"
+              placeholderTextColor={colors.gray500}
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+            />
+            {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+            <View style={styles.confirmActions}>
+              <Pressable style={styles.secondaryButton} onPress={() => { setDeleteTarget(null); setDeletePassword(""); setErrorMessage(""); }} disabled={submitting}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.dangerButton, submitting && { opacity: 0.6 }]} onPress={handleDelete} disabled={submitting}>
+                {submitting
+                  ? <ActivityIndicator color={colors.white} size="small" />
+                  : <Text style={styles.dangerButtonText}>Delete Card</Text>
+                }
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={!!pendingReplacePayload}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setPendingReplacePayload(null)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmCard}>
+            <View style={styles.confirmIconWarning}>
+              <MaterialCommunityIcons name="credit-card-refresh-outline" size={24} color={colors.warning} />
+            </View>
+            <Text style={styles.confirmTitle}>Confirm Card Update</Text>
+            <Text style={styles.confirmText}>
+              Your current card will be removed and the new card ending in {cardDigits.slice(-4)} will become the default payment method.
+            </Text>
+            {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+            <View style={styles.confirmActions}>
+              <Pressable style={styles.secondaryButton} onPress={() => setPendingReplacePayload(null)} disabled={submitting}>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.warningButton, submitting && { opacity: 0.6 }]} onPress={confirmReplace} disabled={submitting}>
+                {submitting
+                  ? <ActivityIndicator color={colors.white} size="small" />
+                  : <Text style={styles.warningButtonText}>Update Card</Text>
+                }
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
     </MobileLayout>
   );
@@ -542,6 +800,12 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, color: colors.gray500 },
   errorText: { fontSize: 12, color: colors.error, fontWeight: "600" },
   successText: { fontSize: 12, color: colors.success, fontWeight: "600" },
+  warningBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: colors.warningSoft, borderWidth: 1, borderColor: colors.warningBorder,
+    borderRadius: radii.lg, padding: 12,
+  },
+  warningBannerText: { flex: 1, color: colors.warning, fontSize: 12, fontWeight: "700", lineHeight: 18 },
 
   cardWidget: {
     borderRadius: 20, backgroundColor: "#6C63FF", padding: 20,
@@ -592,7 +856,9 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.primaryLight,
   },
   actionBtnDanger: { borderColor: colors.errorBorder, backgroundColor: colors.errorLight },
+  actionBtnDisabled: { borderColor: colors.cardBorder, backgroundColor: colors.surfaceStrong, opacity: 0.65 },
   actionBtnText: { fontSize: 12, fontWeight: "700", color: colors.primary },
+  actionBtnDisabledText: { color: colors.gray500 },
 
   emptyCard: {
     backgroundColor: colors.card, borderRadius: radii.xl, borderWidth: 1,
@@ -624,6 +890,8 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg, paddingHorizontal: 14, paddingVertical: 13,
     fontSize: 15, color: colors.gray900,
   },
+  validationLine: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 6 },
+  validationText: { fontSize: 11, fontWeight: "700" },
   rowFields: { flexDirection: "row", gap: 10 },
   typeRow: { flexDirection: "row", gap: 10 },
   typeBtn: {
@@ -642,6 +910,47 @@ const styles = StyleSheet.create({
   checkboxActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   checkLabel: { fontSize: 13, color: colors.gray700, fontWeight: "600" },
   securityNote: { fontSize: 11, color: colors.gray500, textAlign: "center" },
+  securityBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: colors.primaryLight, borderWidth: 1, borderColor: colors.primaryBorder,
+    borderRadius: radii.lg, padding: 12,
+  },
+  securityBannerText: { flex: 1, color: colors.primary, fontSize: 12, fontWeight: "700", lineHeight: 17 },
+  confirmOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center", padding: 20,
+  },
+  confirmCard: {
+    backgroundColor: colors.card, borderRadius: radii.xxl, borderWidth: 1,
+    borderColor: colors.cardBorder, padding: 20, gap: 14,
+  },
+  confirmIcon: {
+    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.errorLight,
+    alignItems: "center", justifyContent: "center",
+  },
+  confirmIconWarning: {
+    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.warningSoft,
+    alignItems: "center", justifyContent: "center",
+  },
+  confirmTitle: { fontSize: 18, fontWeight: "800", color: colors.gray900 },
+  confirmText: { fontSize: 13, color: colors.gray600, lineHeight: 20 },
+  confirmActions: { flexDirection: "row", gap: 10 },
+  secondaryButton: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    borderRadius: radii.lg, borderWidth: 1, borderColor: colors.cardBorder,
+    paddingVertical: 13, backgroundColor: colors.surface,
+  },
+  secondaryButtonText: { color: colors.gray700, fontSize: 14, fontWeight: "800" },
+  dangerButton: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    borderRadius: radii.lg, paddingVertical: 13, backgroundColor: colors.error,
+  },
+  dangerButtonText: { color: colors.white, fontSize: 14, fontWeight: "800" },
+  warningButton: {
+    flex: 1, alignItems: "center", justifyContent: "center",
+    borderRadius: radii.lg, paddingVertical: 13, backgroundColor: colors.warning,
+  },
+  warningButtonText: { color: colors.background, fontSize: 14, fontWeight: "800" },
   emptyWrap: { flex: 1, justifyContent: "center", paddingHorizontal: 20, gap: 12 },
 });
 

@@ -22,7 +22,6 @@ import Cards from "./pages/Cards";
 import FinancialProfilePage from "./pages/FinancialProfile";
 import PaymentHistory from "./pages/PaymentHistory";
 import Notifications from "./pages/Notifications";
-import QRScanner from "./pages/QRScanner";
 import NotFound from "./pages/NotFound";
 import { AppNavigationProvider, AppRoute } from "@/lib/app-navigation";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -52,7 +51,6 @@ const routeRank: Record<AppRoute, number> = {
   FinancialProfile: 4,
   PaymentHistory: 4,
   Notifications: 3,
-  QRScanner: 3,
   NotFound: 99,
 };
 
@@ -143,8 +141,6 @@ const AppShell = () => {
         return <PaymentHistory />;
       case "Notifications":
         return <Notifications />;
-      case "QRScanner":
-        return <QRScanner />;
       default:
         return <NotFound />;
     }

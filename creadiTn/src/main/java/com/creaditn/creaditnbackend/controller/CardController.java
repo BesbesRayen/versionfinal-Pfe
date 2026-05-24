@@ -1,7 +1,11 @@
 package com.creaditn.creaditnbackend.controller;
 
 import com.creaditn.creaditnbackend.dto.CardCreateRequest;
+import com.creaditn.creaditnbackend.dto.CardDeleteRequest;
+import com.creaditn.creaditnbackend.dto.CardDeleteResponse;
 import com.creaditn.creaditnbackend.dto.CardDto;
+import com.creaditn.creaditnbackend.dto.CardReplaceRequest;
+import com.creaditn.creaditnbackend.dto.CardVerificationRequest;
 import com.creaditn.creaditnbackend.service.CardService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +53,32 @@ public class CardController {
             @Valid @RequestBody BlockCardRequest request
     ) {
         return ResponseEntity.ok(cardService.blockCard(userId, request.getCardId()));
+    }
+
+    @PutMapping("/{cardId}/replace")
+    public ResponseEntity<CardDto> replaceCard(
+            @RequestParam Long userId,
+            @PathVariable Long cardId,
+            @Valid @RequestBody CardReplaceRequest request
+    ) {
+        return ResponseEntity.ok(cardService.replaceCard(userId, cardId, request));
+    }
+
+    @DeleteMapping("/delete")
+    public ResponseEntity<CardDeleteResponse> deleteCard(
+            @RequestParam Long userId,
+            @Valid @RequestBody CardDeleteRequest request
+    ) {
+        return ResponseEntity.ok(cardService.deleteCard(userId, request.getCardId(), request));
+    }
+
+    @DeleteMapping("/{cardId}")
+    public ResponseEntity<CardDeleteResponse> deleteCardLegacy(
+            @RequestParam Long userId,
+            @PathVariable Long cardId,
+            @Valid @RequestBody CardVerificationRequest request
+    ) {
+        return ResponseEntity.ok(cardService.deleteCard(userId, cardId, request));
     }
 
     // Legacy endpoints for backward compatibility

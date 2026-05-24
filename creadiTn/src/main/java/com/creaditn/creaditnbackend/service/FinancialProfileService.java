@@ -18,6 +18,9 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class FinancialProfileService {
 
+    private static final BigDecimal MIN_MONTHLY_SALARY = BigDecimal.valueOf(100);
+    private static final BigDecimal MAX_MONTHLY_SALARY = BigDecimal.valueOf(5000);
+
     private final FinancialProfileRepository financialProfileRepository;
     private final UserRepository userRepository;
     private final CardRepository cardRepository;
@@ -32,6 +35,8 @@ public class FinancialProfileService {
         if (!cardRepository.existsByUserIdAndStatus(userId, CardStatus.ACTIVE)) {
             throw new BadRequestException("Add a payment method before completing your financial profile");
         }
+
+        validateMonthlySalary(request.getMonthlySalary());
 
         if (request.getSalaryDay() < 1 || request.getSalaryDay() > 31) {
             throw new BadRequestException("Salary day must be between 1 and 31");
@@ -75,6 +80,14 @@ public class FinancialProfileService {
 
     public boolean isCompleted(Long userId) {
         return financialProfileRepository.existsByUserId(userId);
+    }
+
+    private void validateMonthlySalary(BigDecimal salary) {
+        if (salary == null
+                || salary.compareTo(MIN_MONTHLY_SALARY) < 0
+                || salary.compareTo(MAX_MONTHLY_SALARY) > 0) {
+            throw new BadRequestException("Monthly salary must be between 100 and 5000 DT");
+        }
     }
 
     private RiskLevel calculateRiskLevel(BigDecimal salary) {

@@ -81,6 +81,17 @@ class KycDecisionServiceTest {
         assertEquals(KycStatus.PENDING_MANUAL_REVIEW, decision.status());
     }
 
+    @Test
+    void providerDeclineIsRejected() {
+        KycVerificationResultDto result = strongResult();
+        result.setStatus(KycStatus.REJECTED);
+        result.setProviderReason("Document expired");
+
+        KycDecision decision = decisionService.evaluate(result, true, false);
+
+        assertEquals(KycStatus.REJECTED, decision.status());
+    }
+
     private KycVerificationResultDto strongResult() {
         return KycVerificationResultDto.builder()
                 .status(KycStatus.PENDING)

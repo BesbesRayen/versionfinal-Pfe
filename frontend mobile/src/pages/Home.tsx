@@ -31,7 +31,7 @@ import { colors, radii } from "@/lib/theme";
 const quickActions: Array<{ label: string; route: AppRoute; icon: string; color: string }> = [
   { label: "Creadi Score", route: "CreadiScore", icon: "speedometer", color: "#16a34a" },
   { label: "Boutique", route: "Shops", icon: "storefront-outline", color: "#6C63FF" },
-  { label: "Scanner QR", route: "QRScanner", icon: "qrcode-scan", color: "#55D6A5" },
+  { label: "Mobile Pay", route: "Installments", icon: "cellphone-check", color: "#55D6A5" },
   { label: "Paiements", route: "Installments", icon: "receipt-text-outline", color: "#F59E0B" },
 ];
 

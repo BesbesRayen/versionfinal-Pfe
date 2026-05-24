@@ -64,6 +64,25 @@ export interface AdminStats {
 
 export const getAdminStats = () => fetchBackend<AdminStats>('/api/admin/stats');
 
+export interface DevResetResult {
+  status: string;
+  database: string;
+  deletedTables: string[];
+  resetIdentities: string[];
+  deletedUploadFiles: number;
+  rowsBeforeReset: Record<string, number>;
+  rowsAfterReset: Record<string, number>;
+}
+
+export const resetDevTestData = (resetToken: string, clearUploads = true) =>
+  fetchBackend<DevResetResult>(
+    `/api/admin/dev-reset?confirm=RESET_DATABASE&clearUploads=${clearUploads}`,
+    {
+      method: 'POST',
+      headers: { 'X-Reset-Token': resetToken },
+    },
+  );
+
 export interface AdminUser {
   id: number;
   firstName: string;

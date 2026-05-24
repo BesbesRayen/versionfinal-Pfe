@@ -52,7 +52,6 @@ export interface RegisterRequest {
   lastName: string;
   email: string;
   password: string;
-  phone?: string;
   address?: string;
   profession?: string;
 }
@@ -160,6 +159,12 @@ export interface Payment {
   transactionReference: string;
   paymentMethod: string;
   paidAt: string;
+  productName?: string;
+  receiptNumber?: string;
+  receiptDownloadUrl?: string;
+  status?: string;
+  installmentNumber?: number;
+  automaticPayment?: boolean;
 }
 
 export type CardType = "VISA" | "MASTERCARD";
@@ -186,6 +191,13 @@ export interface AddCardRequest {
   cvv: string;
   defaultCard?: boolean;
 }
+
+export interface CardVerificationPayload {
+  password?: string;
+  biometricVerified?: boolean;
+}
+
+export type ReplaceCardRequest = Omit<AddCardRequest, "defaultCard"> & CardVerificationPayload;
 
 export interface FinancialProfileDto {
   id: number;
@@ -721,6 +733,9 @@ export const getMyPurchases = async (userId: number) =>
 export const getMyPayments = async (userId: number) =>
   requestJson<Payment[]>("/api/payments/my-payments", { method: "GET" }, { userId });
 
+export const getMyReceipts = async (userId: number) =>
+  requestJson<Payment[]>("/api/payments/receipts", { method: "GET" }, { userId });
+
 export const getPaymentMethods = async (userId: number) =>
   requestJson<{ id: number; type: string; last4: string; label: string; defaultMethod: boolean }[]>(
     "/api/payments/methods",
@@ -800,6 +815,26 @@ export const blockCard = async (userId: number, cardId: number) =>
     {
       method: "DELETE",
       body: JSON.stringify({ cardId }),
+    },
+    { userId },
+  );
+
+export const replaceCard = async (userId: number, cardId: number, payload: ReplaceCardRequest) =>
+  requestJson<CardDto>(
+    `/api/cards/${cardId}/replace`,
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+    { userId },
+  );
+
+export const deleteCard = async (userId: number, cardId: number, verification: CardVerificationPayload) =>
+  requestJson<{ success: boolean; message: string }>(
+    "/api/cards/delete",
+    {
+      method: "DELETE",
+      body: JSON.stringify({ cardId, ...verification }),
     },
     { userId },
   );

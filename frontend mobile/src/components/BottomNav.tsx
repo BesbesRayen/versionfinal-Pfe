@@ -21,12 +21,12 @@ const BottomNav = () => {
           const isActive = route === tab.route;
 
           return (
-            <Pressable key={tab.route} onPress={() => navigate(tab.route)} style={styles.tabButton}>
+            <Pressable key={tab.route} onPress={() => navigate(tab.route)} style={[styles.tabButton, isActive && styles.tabButtonActive]}>
               <View style={[styles.iconBox, isActive && styles.iconBoxActive]}>
                 <MaterialCommunityIcons
                   name={tab.icon as keyof typeof MaterialCommunityIcons.glyphMap}
                   size={18}
-                  color={isActive ? colors.primaryForeground : colors.mutedForeground}
+                  color={isActive ? colors.white : colors.mutedForeground}
                 />
               </View>
               <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
@@ -44,8 +44,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: 14,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
   },
   bar: {
     flexDirection: "row",
@@ -54,21 +54,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.navGlass,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 28,
-    paddingVertical: 8,
+    borderRadius: 30,
+    padding: 7,
     shadowColor: colors.shadow,
-    shadowOpacity: 0.34,
-    shadowRadius: 24,
+    shadowOpacity: 0.42,
+    shadowRadius: 28,
     shadowOffset: { width: 0, height: 16 },
+    elevation: 12,
   },
   tabButton: {
     alignItems: "center",
-    paddingVertical: 2,
+    justifyContent: "center",
+    paddingVertical: 6,
+    borderRadius: 24,
     flex: 1,
   },
+  tabButtonActive: {
+    backgroundColor: colors.primarySoft,
+  },
   iconBox: {
-    width: 34,
-    height: 34,
+    width: 32,
+    height: 32,
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
@@ -76,14 +82,14 @@ const styles = StyleSheet.create({
   iconBoxActive: {
     backgroundColor: colors.primary,
     shadowColor: colors.ring,
-    shadowOpacity: 0.34,
+    shadowOpacity: 0.4,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 9 },
   },
   label: {
-    marginTop: 3,
+    marginTop: 2,
     fontFamily: "Inter",
-    fontSize: 10,
+    fontSize: 9,
     color: colors.mutedForeground,
     fontWeight: "700",
   },
