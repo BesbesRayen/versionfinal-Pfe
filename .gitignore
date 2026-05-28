@@ -18,3 +18,4 @@ tmp-kyc-test/
 .vscode/
 .DS_Store
 Dashboard_client-main/public/app/credittn.apk 
+*.apk 
