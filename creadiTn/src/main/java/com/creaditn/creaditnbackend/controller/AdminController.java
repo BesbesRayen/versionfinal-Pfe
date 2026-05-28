@@ -40,6 +40,7 @@ public class AdminController {
     private final InstallmentRepository installmentRepository;
     private final KycDocumentRepository kycDocumentRepository;
     private final ArticleRepository articleRepository;
+    private final StoreRepository storeRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final InvoiceRepository invoiceRepository;
     private final AdminNotificationRepository adminNotificationRepository;
@@ -81,6 +82,7 @@ public class AdminController {
         stats.put("totalUsers", userRepository.count());
         stats.put("totalCredits", creditRequestRepository.count());
         stats.put("totalInstallments", installmentRepository.count());
+        stats.put("totalStores", storeRepository.count());
         stats.put("totalArticles", articleRepository.countByActiveTrue());
         stats.put("totalOrders", purchaseOrderRepository.count());
         stats.put("creditOrders", purchaseOrderRepository.countByPaymentType(PurchasePaymentType.CREDIT));

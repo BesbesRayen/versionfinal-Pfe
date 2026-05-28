@@ -66,18 +66,6 @@ export interface AuthResponse {
   emailVerified?: boolean;
 }
 
-export interface Merchant {
-  id: number;
-  name: string;
-  category: string;
-  address: string;
-  phone: string;
-  email: string;
-  logoUrl: string;
-  active: boolean;
-  createdAt: string;
-}
-
 export type InstallmentStatus = "PENDING" | "PAID" | "OVERDUE";
 
 export interface Installment {
@@ -297,6 +285,8 @@ export interface ShopCatalogShop {
   name: string;
   logoUrl: string;
   storeUrl: string;
+  slug?: string;
+  category?: string;
 }
 
 export interface ShopCatalogArticle {
@@ -319,6 +309,7 @@ export interface ShopCatalogProduct {
 
 export interface PartnerArticle {
   id: number;
+  storeId?: number;
   productName: string;
   description: string;
   price: number;
@@ -329,6 +320,32 @@ export interface PartnerArticle {
   sourceUrl?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PartnerStore {
+  id: number;
+  slug: string;
+  name: string;
+  logoUrl?: string;
+  coverImageUrl?: string;
+  websiteUrl: string;
+  category: string;
+  country: string;
+  parserType?: string;
+  difficulty?: string;
+  hasAntiRobot?: boolean;
+  description?: string;
+  articleCount: number;
+  active: boolean;
+}
+
+export interface CreditPlan {
+  months: number;
+  label: string;
+  feePercent: number;
+  feeLabel: string;
+  description: string;
+  recommended: boolean;
 }
 
 interface ShopCatalogDerivedPayload {
@@ -565,47 +582,68 @@ export const resendVerification = async (email: string): Promise<{ message: stri
   });
 };
 
-export const getMerchants = async () => requestJson<Merchant[]>("/api/merchants", { method: "GET" });
-
 export const getCreditBalance = async (userId: number) =>
   requestJson<CreditBalanceResult>("/api/credits/balance", { method: "GET" }, { userId });
 
-const buildShopCatalogFromArticles = (rawArticles: PartnerArticle[]): ShopCatalogDerivedPayload => {
+const buildShopCatalogFromArticles = (rawArticles: PartnerArticle[], rawStores: PartnerStore[] = []): ShopCatalogDerivedPayload => {
   const activeArticles = rawArticles.filter((item) => item.active !== false);
+  const absoluteImageUrl = (url?: string) => {
+    if (!url) return "https://images.unsplash.com/photo-1556740749-887f6717d7e4?w=800";
+    return url.startsWith("/") ? `${API_BASE_URL}${url}` : url;
+  };
+  const normalizeName = (value?: string) => (value || "Boutique").trim().toLowerCase();
 
-  const boutiqueNames = Array.from(
-    new Set(activeArticles.map((item) => (item.boutiqueName?.trim() || "Boutique"))),
-  ).sort((a, b) => a.localeCompare(b));
+  const activeStores = rawStores.filter((item) => item.active !== false);
+  const storesByName = new Map(activeStores.map((item) => [normalizeName(item.name), item]));
+  const boutiqueNames = Array.from(new Set([
+    ...activeStores.map((item) => item.name?.trim() || "Boutique"),
+    ...activeArticles.map((item) => item.boutiqueName?.trim() || "Boutique"),
+  ])).sort((a, b) => a.localeCompare(b));
 
-  const shopIds = new Map<string, number>();
-  boutiqueNames.forEach((name, index) => {
-    shopIds.set(name, index + 1);
+  const maxStoreId = activeStores.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0);
+  const fallbackShopIds = new Map<string, number>();
+  let nextFallbackId = maxStoreId + 1;
+  boutiqueNames.forEach((name) => {
+    if (!storesByName.has(normalizeName(name))) {
+      fallbackShopIds.set(normalizeName(name), nextFallbackId);
+      nextFallbackId += 1;
+    }
   });
 
   const shops: ShopCatalogShop[] = boutiqueNames.map((name) => {
-    const firstArticle = activeArticles.find((item) => (item.boutiqueName?.trim() || "Boutique") === name);
+    const normalizedName = normalizeName(name);
+    const store = storesByName.get(normalizedName);
+    const firstArticle = activeArticles.find((item) => normalizeName(item.boutiqueName) === normalizedName);
     return {
-      id: shopIds.get(name) ?? 0,
+      id: store?.id ?? fallbackShopIds.get(normalizedName) ?? 0,
       name,
-      logoUrl: firstArticle?.imageUrl || "https://images.unsplash.com/photo-1556740749-887f6717d7e4?w=800",
-      storeUrl: firstArticle?.sourceUrl || `https://www.google.com/search?q=${encodeURIComponent(name + " tunisia")}`,
+      slug: store?.slug,
+      category: store?.category ?? firstArticle?.category,
+      logoUrl: absoluteImageUrl(store?.logoUrl),
+      storeUrl: store?.websiteUrl || firstArticle?.sourceUrl || `https://www.google.com/search?q=${encodeURIComponent(name + " tunisia")}`,
     };
   });
 
+  const shopIdForArticle = (item: PartnerArticle) => {
+    if (item.storeId) return item.storeId;
+    const normalizedName = normalizeName(item.boutiqueName);
+    return storesByName.get(normalizedName)?.id ?? fallbackShopIds.get(normalizedName) ?? 0;
+  };
+
   const articles: ShopCatalogArticle[] = activeArticles.map((item) => ({
     id: item.id,
-    shopId: shopIds.get(item.boutiqueName?.trim() || "Boutique") ?? 0,
+    shopId: shopIdForArticle(item),
     name: item.productName,
-    imageUrl: item.imageUrl,
+    imageUrl: absoluteImageUrl(item.imageUrl),
     sourceUrl: item.sourceUrl,
   }));
 
   const products: ShopCatalogProduct[] = activeArticles.map((item) => ({
     id: item.id,
-    shopId: shopIds.get(item.boutiqueName?.trim() || "Boutique") ?? 0,
+    shopId: shopIdForArticle(item),
     articleId: item.id,
     name: item.productName,
-    imageUrl: item.imageUrl,
+    imageUrl: absoluteImageUrl(item.imageUrl),
     priceTnd: Number(item.price),
     productUrl: item.sourceUrl || `https://www.google.com/search?q=${encodeURIComponent(item.productName + " " + item.boutiqueName)}`,
   }));
@@ -624,8 +662,11 @@ const getShopCatalogPayload = async (): Promise<ShopCatalogDerivedPayload> => {
   }
 
   try {
-    const backendArticles = await requestJson<PartnerArticle[]>("/api/articles", { method: "GET" });
-    shopCatalogCache = buildShopCatalogFromArticles(backendArticles);
+    const [backendArticles, backendStores] = await Promise.all([
+      requestJson<PartnerArticle[]>("/api/articles", { method: "GET" }),
+      requestJson<PartnerStore[]>("/api/public/stores", { method: "GET" }),
+    ]);
+    shopCatalogCache = buildShopCatalogFromArticles(backendArticles, backendStores);
     shopCatalogCachedAt = Date.now();
     return shopCatalogCache;
   } catch {
@@ -687,6 +728,9 @@ export const getPartnerArticles = async () =>
 
 export const getPopularArticles = async (limit = 3) =>
   requestJson<PartnerArticle[]>("/api/articles/popular", { method: "GET" }, { limit });
+
+export const getCreditPlans = async () =>
+  requestJson<CreditPlan[]>("/api/credit-plans", { method: "GET" });
 
 export const getMyCreditScore = async (userId: number) =>
   requestJson<CreadiScoreResult>("/api/creadi-score/latest", { method: "GET" }, { userId });
@@ -1031,12 +1075,12 @@ export const requestForgotPassword = async (identifier: string) =>
     },
   );
 
-export const confirmForgotPassword = async (identifier: string, code: string, newPassword: string) =>
+export const confirmForgotPassword = async (identifier: string, token: string, newPassword: string) =>
   requestJson<ApiResponse>(
     "/api/auth/forgot-password/confirm",
     {
       method: "POST",
-      body: JSON.stringify({ identifier, code, newPassword }),
+      body: JSON.stringify({ identifier, token, newPassword }),
     },
   );
 

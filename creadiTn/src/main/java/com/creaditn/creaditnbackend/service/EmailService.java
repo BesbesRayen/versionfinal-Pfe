@@ -26,13 +26,13 @@ public class EmailService {
     @Value("${spring.mail.password:}")
     private String password;
 
-    public void send(String to, String subject, String htmlBody) {
+    public boolean send(String to, String subject, String htmlBody) {
         if (to == null || to.isBlank()) {
-            return;
+            return false;
         }
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             log.warn("Email not sent to {} because SMTP credentials are not configured", to);
-            return;
+            return false;
         }
 
         try {
@@ -44,8 +44,10 @@ public class EmailService {
             helper.setText(htmlBody, true);
             mailSender.send(message);
             log.info("Email sent to {}: {}", to, subject);
+            return true;
         } catch (Exception ex) {
             log.warn("Could not send email to {}: {}", to, ex.getMessage());
+            return false;
         }
     }
 
@@ -76,6 +78,17 @@ public class EmailService {
                 "Si vous n'etes pas a l'origine de cette demande, ignorez cet email."
         );
         send(to, "Votre code de verification CreadiTN", body);
+    }
+
+    public boolean sendPasswordResetLink(String to, String firstName, String resetLink, String token, long validMinutes) {
+        String body = html(
+                "Reset Your Password",
+                "Bonjour <strong>" + escape(displayName(firstName)) + "</strong>,",
+                "Cliquez sur le lien ci-dessous pour choisir un nouveau mot de passe. Ce lien est valide pendant <strong>" + validMinutes + " minutes</strong>.",
+                escapeLink(resetLink),
+                "Si vous utilisez l'application mobile, copiez ce jeton de reinitialisation: <strong>" + escape(token) + "</strong>. Si vous n'etes pas a l'origine de cette demande, ignorez cet email."
+        );
+        return send(to, "Reset Your Password", body);
     }
 
     public void sendPasswordChanged(String to, String firstName) {
@@ -131,9 +144,19 @@ public class EmailService {
         if (highlight != null) {
             sb.append("<div style='background:#f0f0ff;border:2px solid #1a1aff;border-radius:10px;")
                     .append("padding:20px;text-align:center;margin:20px 0;'>");
-            sb.append("<span style='font-size:32px;font-weight:900;color:#1a1aff;letter-spacing:6px;'>")
-                    .append(escape(highlight))
-                    .append("</span>");
+            if (highlight.startsWith("http://") || highlight.startsWith("https://")) {
+                sb.append("<a href='").append(escape(highlight)).append("' style='")
+                        .append("display:inline-block;background:#1a1aff;color:#ffffff;text-decoration:none;")
+                        .append("font-size:15px;font-weight:800;border-radius:8px;padding:14px 22px;'>")
+                        .append("Reinitialiser mon mot de passe</a>");
+                sb.append("<p style='color:#666;font-size:12px;line-height:1.5;margin:14px 0 0;word-break:break-all;'>")
+                        .append(escape(highlight))
+                        .append("</p>");
+            } else {
+                sb.append("<span style='font-size:32px;font-weight:900;color:#1a1aff;letter-spacing:6px;'>")
+                        .append(escape(highlight))
+                        .append("</span>");
+            }
             sb.append("</div>");
         }
 
@@ -168,5 +191,9 @@ public class EmailService {
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
+    }
+
+    private String escapeLink(String value) {
+        return value == null ? "" : value.trim();
     }
 }

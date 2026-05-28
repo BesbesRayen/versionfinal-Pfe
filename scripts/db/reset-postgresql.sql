@@ -22,7 +22,6 @@ DECLARE
         'user_wallet',
         'users',
         'articles',
-        'merchants',
         'messages'
     ];
     existing_tables text;

@@ -41,12 +41,24 @@ const resolveFromParts = (segments: string[], params: Record<string, string>): R
     return { route: "CreadiScore" };
   }
 
-  if (resource === "payment" || resource === "pay") {
+  if (resource === "login" || resource === "signin") {
+    return { route: "Login" };
+  }
+
+  if (resource === "payments" || resource === "installments" || resource === "payment" || resource === "pay") {
     return { route: "Installments" };
   }
 
   if (resource === "download" || resource === "open" || resource === "home") {
     return { route: "Home" };
+  }
+
+  if (resource === "credit") {
+    return { route: "Credit" };
+  }
+
+  if (resource === "profile" || resource === "account") {
+    return { route: "Profile" };
   }
 
   if (resource === "product" || resource === "article" || articleId) {
@@ -128,6 +140,11 @@ export function resolveDeepLink(rawValue: string): ResolvedDeepLink | null {
       const host = url.hostname ? [url.hostname] : [];
       const path = url.pathname.split("/").filter(Boolean);
       return resolveFromParts([...host, ...path], params);
+    }
+
+    if (url.protocol === "exp:") {
+      const path = url.pathname.split("/").filter(Boolean).filter((segment) => segment !== "--");
+      return resolveFromParts(path, params);
     }
 
     if (url.protocol === "http:" || url.protocol === "https:") {

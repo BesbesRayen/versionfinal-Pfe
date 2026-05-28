@@ -31,9 +31,7 @@ const Register = () => {
   const [errorMessage, setErrorMessage] = useState("");
 
   const clearError = () => {
-    if (errorMessage) {
-      setErrorMessage("");
-    }
+    if (errorMessage) setErrorMessage("");
   };
 
   const handleRegister = async () => {
@@ -64,7 +62,6 @@ const Register = () => {
         address: address.trim() || undefined,
       });
 
-      // Don't set auth token yet — user must verify email first
       navigate("EmailVerification", { email: auth.email ?? email.trim() });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Echec de creation du compte.");
@@ -75,24 +72,44 @@ const Register = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.flexOne}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <View style={styles.orbTop} />
+      <View style={styles.orbLeft} />
+      <View style={styles.orbBottom} />
+      <KeyboardAvoidingView style={styles.flexOne} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-          <View style={styles.headerBlock}>
-            <View style={styles.logoBox}>
-              <MaterialCommunityIcons name="account-plus-outline" size={27} color={colors.white} />
+          <View style={styles.topBar}>
+            <Pressable onPress={() => navigate("Login")} style={styles.backButton}>
+              <MaterialCommunityIcons name="arrow-left" size={19} color={colors.white} />
+            </Pressable>
+            <View style={styles.invitePill}>
+              <MaterialCommunityIcons name="diamond-stone" size={14} color="#E8DDFF" />
+              <Text style={styles.inviteText}>Founding member access</Text>
             </View>
-
-            <Text style={styles.title}>Creer votre compte</Text>
-            <Text style={styles.subtitle}>Inscrivez-vous pour commencer avec CreditTN</Text>
           </View>
 
-          <View style={styles.form}>
-            <View style={styles.row}>
-              <View style={styles.halfField}>
-                <Text style={styles.label}>PRENOM</Text>
+          <View style={styles.hero}>
+            <View style={styles.identityStack}>
+              <View style={styles.identityCardLarge}>
+                <View style={styles.identityIcon}>
+                  <MaterialCommunityIcons name="fingerprint" size={28} color={colors.white} />
+                </View>
+                <Text style={styles.identityTitle}>Onboarding prive</Text>
+                <Text style={styles.identityCopy}>Verification, credit profile and card readiness in one polished flow.</Text>
+              </View>
+              <View style={styles.identityCardSmall}>
+                <MaterialCommunityIcons name="check-decagram" size={18} color={colors.success} />
+                <Text style={styles.identitySmallText}>Email verification next</Text>
+              </View>
+            </View>
+
+            <Text style={styles.title}>Ouvrez votre portefeuille CreditTN.</Text>
+            <Text style={styles.subtitle}>Un compte moderne pour acheter maintenant, payer intelligemment et batir votre reputation financiere.</Text>
+          </View>
+
+          <View style={styles.formPanel}>
+            <View style={styles.nameGrid}>
+              <View style={styles.compactField}>
+                <Text style={styles.floatingLabel}>Prenom</Text>
                 <TextInput
                   value={firstName}
                   onChangeText={(value) => {
@@ -100,13 +117,13 @@ const Register = () => {
                     clearError();
                   }}
                   style={styles.input}
-                  placeholder="Prenom"
-                  placeholderTextColor="#6b6b80"
+                  placeholder="Rayen"
+                  placeholderTextColor="#646E8F"
                 />
               </View>
 
-              <View style={styles.halfField}>
-                <Text style={styles.label}>NOM</Text>
+              <View style={styles.compactField}>
+                <Text style={styles.floatingLabel}>Nom</Text>
                 <TextInput
                   value={lastName}
                   onChangeText={(value) => {
@@ -114,114 +131,115 @@ const Register = () => {
                     clearError();
                   }}
                   style={styles.input}
-                  placeholder="Nom"
-                  placeholderTextColor="#6b6b80"
+                  placeholder="Ben Ali"
+                  placeholderTextColor="#646E8F"
                 />
               </View>
             </View>
 
-            <View>
-              <Text style={styles.label}>EMAIL</Text>
-              <TextInput
-                value={email}
-                onChangeText={(value) => {
-                  setEmail(value);
-                  clearError();
-                }}
-                style={styles.input}
-                placeholder="vous@exemple.com"
-                placeholderTextColor="#6b6b80"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+            <View style={styles.fieldShell}>
+              <Text style={styles.floatingLabel}>Email</Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons name="email-outline" size={19} color="#A99CFF" />
+                <TextInput
+                  value={email}
+                  onChangeText={(value) => {
+                    setEmail(value);
+                    clearError();
+                  }}
+                  style={styles.input}
+                  placeholder="vous@exemple.com"
+                  placeholderTextColor="#646E8F"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
             </View>
 
-            <View>
-              <Text style={styles.label}>ADRESSE (OPTIONNEL)</Text>
-              <TextInput
-                value={address}
-                onChangeText={(value) => {
-                  setAddress(value);
-                  clearError();
-                }}
-                style={styles.input}
-                placeholder="Ville, quartier..."
-                placeholderTextColor="#6b6b80"
-              />
+            <View style={styles.fieldShell}>
+              <Text style={styles.floatingLabel}>Adresse</Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons name="map-marker-outline" size={19} color="#A99CFF" />
+                <TextInput
+                  value={address}
+                  onChangeText={(value) => {
+                    setAddress(value);
+                    clearError();
+                  }}
+                  style={styles.input}
+                  placeholder="Ville, quartier"
+                  placeholderTextColor="#646E8F"
+                />
+              </View>
             </View>
-            <View>
-              <Text style={styles.label}>MOT DE PASSE</Text>
-              <View style={styles.passwordWrapper}>
-                <MaterialCommunityIcons name="lock-outline" size={18} color={colors.gray400} />
+
+            <View style={styles.fieldShell}>
+              <Text style={styles.floatingLabel}>Mot de passe</Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons name="lock-outline" size={19} color="#A99CFF" />
                 <TextInput
                   value={password}
                   onChangeText={(value) => {
                     setPassword(value);
                     clearError();
                   }}
-                  style={styles.passwordInput}
-                  placeholder="••••••••"
-                  placeholderTextColor="#6b6b80"
+                  style={styles.input}
+                  placeholder="8 caracteres minimum"
+                  placeholderTextColor="#646E8F"
                   secureTextEntry={!showPassword}
                 />
-                <Pressable
-                  onPress={() => setShowPassword((prev) => !prev)}
-                  style={styles.passwordToggle}
-                >
-                  <MaterialCommunityIcons name={showPassword ? "eye-off-outline" : "eye-outline"} size={19} color={colors.primary} />
+                <Pressable onPress={() => setShowPassword((prev) => !prev)} style={styles.iconButton}>
+                  <MaterialCommunityIcons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.white} />
                 </Pressable>
               </View>
             </View>
 
-            <View>
-              <Text style={styles.label}>CONFIRMER LE MOT DE PASSE</Text>
-              <View style={styles.passwordWrapper}>
-                <MaterialCommunityIcons name="shield-key-outline" size={18} color={colors.gray400} />
+            <View style={styles.fieldShell}>
+              <Text style={styles.floatingLabel}>Confirmation</Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons name="shield-key-outline" size={19} color="#A99CFF" />
                 <TextInput
                   value={confirmPassword}
                   onChangeText={(value) => {
                     setConfirmPassword(value);
                     clearError();
                   }}
-                  style={styles.passwordInput}
-                  placeholder="••••••••"
-                  placeholderTextColor="#6b6b80"
+                  style={styles.input}
+                  placeholder="Repeter le mot de passe"
+                  placeholderTextColor="#646E8F"
                   secureTextEntry={!showConfirmPassword}
                 />
-                <Pressable
-                  onPress={() => setShowConfirmPassword((prev) => !prev)}
-                  style={styles.passwordToggle}
-                >
-                  <MaterialCommunityIcons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={19} color={colors.primary} />
+                <Pressable onPress={() => setShowConfirmPassword((prev) => !prev)} style={styles.iconButton}>
+                  <MaterialCommunityIcons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.white} />
                 </Pressable>
               </View>
             </View>
 
-            <TouchableOpacity
-              style={[styles.registerButton, isSubmitting && styles.registerButtonDisabled]}
-              activeOpacity={0.9}
-              onPress={handleRegister}
-              disabled={isSubmitting}
-            >
-              <Text style={styles.registerButtonText}>
-                {isSubmitting ? "Creation..." : "Creer un compte"}
-              </Text>
-            </TouchableOpacity>
-
             {!!errorMessage && (
               <View style={styles.errorCard}>
-                <MaterialCommunityIcons name="alert-circle-outline" size={16} color={colors.error} />
+                <MaterialCommunityIcons name="alert-circle-outline" size={17} color={colors.error} />
                 <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
             )}
+
+            <View style={styles.ctaBlock}>
+              <TouchableOpacity
+                style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+                activeOpacity={0.9}
+                onPress={handleRegister}
+                disabled={isSubmitting}
+              >
+                <Text style={styles.primaryButtonText}>{isSubmitting ? "Creation..." : "Creer mon compte"}</Text>
+                <MaterialCommunityIcons name="arrow-right" size={19} color={colors.white} />
+              </TouchableOpacity>
+              <Text style={styles.legalText}>Compte protege par verification email et controles de securite CreditTN.</Text>
+            </View>
           </View>
 
-          <Text style={styles.footerText}>
-            Vous avez deja un compte?{" "}
-            <Text style={styles.footerAction} onPress={() => navigate("Login")}>
-              Se connecter
-            </Text>
-          </Text>
+          <Pressable style={styles.footerLink} onPress={() => navigate("Login")}>
+            <Text style={styles.footerMuted}>Vous avez deja un compte</Text>
+            <Text style={styles.footerAction}>Se connecter</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -232,145 +250,276 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.pageBg,
+    overflow: "hidden",
   },
   flexOne: {
     flex: 1,
   },
   container: {
     flexGrow: 1,
-    justifyContent: "center",
     paddingHorizontal: 22,
-    paddingVertical: 34,
+    paddingTop: 14,
+    paddingBottom: 26,
   },
-  headerBlock: {
-    marginBottom: 32,
+  orbTop: {
+    position: "absolute",
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(139, 92, 246, 0.32)",
+    top: -110,
+    right: -120,
   },
-  logoBox: {
-    width: 60,
-    height: 60,
+  orbLeft: {
+    position: "absolute",
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(45, 212, 255, 0.12)",
+    top: 170,
+    left: -145,
+  },
+  orbBottom: {
+    position: "absolute",
+    width: 360,
+    height: 260,
+    borderRadius: 180,
+    backgroundColor: "rgba(183, 140, 255, 0.10)",
+    bottom: -160,
+    alignSelf: "center",
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  backButton: {
+    width: 44,
+    height: 44,
     borderRadius: 22,
-    backgroundColor: colors.primary,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: colors.primaryBorder,
-    shadowColor: colors.ring,
-    shadowOpacity: 0.32,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
   },
-  title: {
-    fontSize: 31,
-    lineHeight: 37,
-    fontWeight: "900",
-    color: colors.gray900,
-  },
-  subtitle: {
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
-    color: colors.gray500,
-  },
-  form: {
-    gap: 16,
-  },
-  row: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  halfField: {
-    flex: 1,
-  },
-  label: {
-    marginBottom: 8,
-    fontSize: 11,
-    letterSpacing: 1,
-    fontWeight: "700",
-    color: colors.gray700,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
-    paddingHorizontal: 15,
-    paddingVertical: 15,
-    fontSize: 15,
-    color: colors.gray900,
-  },
-  passwordWrapper: {
-    minHeight: 54,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
-    paddingLeft: 15,
-    paddingRight: 8,
+  invitePill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  passwordInput: {
-    flex: 1,
-    paddingVertical: 15,
-    fontSize: 15,
-    color: colors.gray900,
-  },
-  passwordToggle: {
-    height: 38,
-    width: 38,
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderRadius: radii.full,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "rgba(139, 92, 246, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(183, 140, 255, 0.28)",
   },
-  registerButton: {
-    marginTop: 8,
-    backgroundColor: colors.primary,
-    borderRadius: radii.xl,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
+  inviteText: {
+    color: "#E8DDFF",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  hero: {
+    marginTop: 22,
+    gap: 18,
+  },
+  identityStack: {
+    height: 166,
+  },
+  identityCardLarge: {
+    width: "86%",
+    minHeight: 140,
+    borderRadius: 30,
+    padding: 18,
+    backgroundColor: "rgba(17, 20, 39, 0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.16)",
     shadowColor: colors.ring,
     shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
   },
-  registerButtonDisabled: {
-    opacity: 0.7,
+  identityIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#8B5CF6",
+    marginBottom: 15,
   },
-  registerButtonText: {
+  identityTitle: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  identityCopy: {
+    marginTop: 6,
+    color: colors.mutedForeground,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: "700",
+    maxWidth: 230,
+  },
+  identityCardSmall: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 22,
+    backgroundColor: "rgba(5, 8, 22, 0.86)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.13)",
+  },
+  identitySmallText: {
+    color: colors.gray800,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  title: {
+    maxWidth: 345,
+    color: colors.white,
+    fontSize: 36,
+    lineHeight: 41,
+    fontWeight: "900",
+  },
+  subtitle: {
+    maxWidth: 350,
+    color: colors.mutedForeground,
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: "600",
+  },
+  formPanel: {
+    marginTop: 24,
+    gap: 13,
+    borderRadius: 32,
+    padding: 14,
+    backgroundColor: "rgba(12, 16, 34, 0.76)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    shadowColor: colors.shadow,
+    shadowOpacity: 0.38,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 18 },
+  },
+  nameGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  compactField: {
+    flex: 1,
+    minHeight: 68,
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+  },
+  fieldShell: {
+    minHeight: 68,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+  },
+  floatingLabel: {
+    color: "#A99CFF",
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 11,
     color: colors.white,
     fontSize: 15,
-    fontWeight: "800",
+    fontWeight: "700",
+  },
+  iconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(139, 92, 246, 0.22)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   errorCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 9,
     backgroundColor: colors.errorLight,
     borderWidth: 1,
     borderColor: colors.errorBorder,
-    borderRadius: radii.xl,
+    borderRadius: 20,
     padding: 12,
   },
   errorText: {
     flex: 1,
     color: colors.error,
     fontSize: 12,
-    lineHeight: 18,
-    fontWeight: "700",
+    lineHeight: 17,
+    fontWeight: "800",
   },
-  footerText: {
-    marginTop: 26,
+  ctaBlock: {
+    gap: 10,
+  },
+  primaryButton: {
+    minHeight: 58,
+    borderRadius: 24,
+    backgroundColor: "#8B5CF6",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 10,
+    shadowColor: colors.ring,
+    shadowOpacity: 0.52,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 14 },
+  },
+  buttonDisabled: {
+    opacity: 0.68,
+  },
+  primaryButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  legalText: {
+    color: colors.mutedForeground,
+    fontSize: 11,
+    lineHeight: 16,
     textAlign: "center",
-    color: colors.gray500,
-    fontSize: 14,
+    fontWeight: "700",
+    paddingHorizontal: 12,
+  },
+  footerLink: {
+    marginTop: 18,
+    alignSelf: "center",
+    alignItems: "center",
+    gap: 4,
+  },
+  footerMuted: {
+    color: colors.mutedForeground,
+    fontSize: 12,
+    fontWeight: "700",
   },
   footerAction: {
-    color: colors.primary,
-    fontWeight: "700",
+    color: "#E8DDFF",
+    fontSize: 14,
+    fontWeight: "900",
   },
 });
 

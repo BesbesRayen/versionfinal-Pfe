@@ -16,6 +16,7 @@ import {
   Menu,
   Package,
   ShieldCheck,
+  Store,
   Users,
   X,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ const sidebarLinks = [
   { href: '/admin/credits', label: 'Demandes crédit', icon: CreditCard },
   { href: '/admin/installments', label: 'Échéances', icon: CalendarClock },
   { href: '/admin/articles', label: 'Articles', icon: Package },
+  { href: '/admin/stores', label: 'Boutiques compatibles', icon: Store },
   { href: '/admin/invoices', label: 'Factures', icon: FileText },
   { href: '/admin/notifications', label: 'Alertes crédit', icon: Bell },
   { href: '/admin/messages', label: 'Messages reçus', icon: Mail },
@@ -39,34 +41,68 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    const redirectToLogin = () => {
+      setAdminUser(null);
+      setChecking(true);
+      window.location.replace('/admin/login');
+    };
+
+    const verifyAdminSession = () => {
+      if (pathname === '/admin/login') {
+        setChecking(false);
+        return;
+      }
+
+      const token = localStorage.getItem('adminToken');
+      const user = localStorage.getItem('adminUser');
+
+      if (!token) {
+        redirectToLogin();
+        return;
+      }
+
+      if (user) {
+        try {
+          const parsed = JSON.parse(user);
+          setAdminUser({ name: parsed.name || 'Admin', email: parsed.email || '' });
+        } catch {
+          setAdminUser({ name: 'Admin', email: '' });
+        }
+      } else {
+        setAdminUser({ name: 'Admin', email: '' });
+      }
+
+      setChecking(false);
+    };
+
     if (pathname === '/admin/login') {
       setChecking(false);
       return;
     }
 
-    const token = localStorage.getItem('adminToken');
-    const user = localStorage.getItem('adminUser');
+    verifyAdminSession();
 
-    if (!token) {
-      window.location.href = '/admin/login';
-      return;
-    }
-
-    if (user) {
-      try {
-        const parsed = JSON.parse(user);
-        setAdminUser({ name: parsed.name || 'Admin', email: parsed.email || '' });
-      } catch {
-        setAdminUser({ name: 'Admin', email: '' });
+    const handlePageShow = () => verifyAdminSession();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'adminToken' || event.key === 'adminUser') {
+        verifyAdminSession();
       }
-    }
-    setChecking(false);
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, [pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
     localStorage.removeItem('adminUser');
-    window.location.href = '/admin/login';
+    setAdminUser(null);
+    window.location.replace('/admin/login');
   };
 
   if (pathname === '/admin/login') {

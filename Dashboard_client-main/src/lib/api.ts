@@ -50,6 +50,7 @@ export interface AdminStats {
   totalUsers: number;
   totalCredits: number;
   totalInstallments: number;
+  totalStores: number;
   totalArticles: number;
   totalOrders: number;
   creditOrders: number;
@@ -196,26 +197,96 @@ export const rejectCredit = (creditId: number) =>
 
 export interface AdminArticle {
   id: number;
+  storeId?: number;
   productName: string;
   description: string;
   price: number;
+  promoPrice?: number;
   imageUrl: string;
   boutiqueName: string;
   category: string;
+  brand?: string;
+  stockQuantity?: number;
+  warranty?: string;
+  availability?: string;
   active: boolean;
+  available?: boolean;
+  eligibleThreeMonths?: boolean;
+  eligibleSixMonths?: boolean;
+  eligibleTwelveMonths?: boolean;
   sourceUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface AdminArticleInput {
+  storeId?: number;
   productName: string;
   description: string;
   price: number;
+  promoPrice?: number;
   imageUrl: string;
   boutiqueName: string;
   category: string;
+  brand?: string;
+  stockQuantity?: number;
+  warranty?: string;
+  availability?: string;
   sourceUrl?: string;
+  active?: boolean;
+  available?: boolean;
+  eligibleThreeMonths?: boolean;
+  eligibleSixMonths?: boolean;
+  eligibleTwelveMonths?: boolean;
+}
+
+export type PublicArticle = AdminArticle;
+
+export interface PublicStore {
+  id: number;
+  slug: string;
+  name: string;
+  category: string;
+  country: string;
+  websiteUrl: string;
+  logoUrl: string;
+  coverImageUrl?: string;
+  parserType?: string;
+  difficulty?: string;
+  hasAntiRobot?: boolean;
+  antiRobotLevel?: 'none' | 'soft' | 'hard' | string;
+  visibleOnClient?: boolean;
+  description?: string;
+  articleCount: number;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface StoreInput {
+  name: string;
+  slug?: string;
+  logoUrl?: string;
+  coverImageUrl?: string;
+  websiteUrl: string;
+  category: string;
+  country: string;
+  parserType?: string;
+  difficulty?: string;
+  hasAntiRobot?: boolean;
+  antiRobotLevel?: 'none' | 'soft' | 'hard' | string;
+  visibleOnClient?: boolean;
+  description?: string;
+  active?: boolean;
+}
+
+export interface CreditPlan {
+  months: number;
+  label: string;
+  feePercent: number;
+  feeLabel: string;
+  description: string;
+  recommended: boolean;
 }
 
 export interface ProductImportResult {
@@ -229,10 +300,70 @@ export interface ProductImportResult {
   aiExtracted: boolean;
   valid: boolean;
   errorMessage?: string;
+  store?: {
+    name?: string;
+    domain?: string;
+  };
 }
 
-export const getAdminArticles = (params?: { category?: string; boutiqueName?: string; search?: string }) =>
+export const getAdminArticles = (params?: { category?: string; boutiqueName?: string; search?: string; active?: boolean; storeId?: number }) =>
   fetchBackend<AdminArticle[]>(withQuery('/api/admin/articles', params));
+
+export const getPublicArticles = (params?: { category?: string; boutiqueName?: string; search?: string }) =>
+  fetchBackend<PublicArticle[]>(withQuery('/api/articles', params));
+
+export const getPublicPopularArticles = (limit = 12) =>
+  fetchBackend<PublicArticle[]>(withQuery('/api/articles/popular', { limit }));
+
+export const getPublicStores = () =>
+  fetchBackend<PublicStore[]>('/api/public/stores');
+
+export const getPublicStore = (storeId: string) =>
+  fetchBackend<PublicStore>(`/api/public/stores/${encodeURIComponent(storeId)}`);
+
+export const getPublicStoreArticles = (storeId: string) =>
+  fetchBackend<PublicArticle[]>(`/api/public/stores/${encodeURIComponent(storeId)}/articles`);
+
+export const getAdminStores = () =>
+  fetchBackend<PublicStore[]>('/api/admin/stores');
+
+export const getAdminStore = (storeId: string | number) =>
+  fetchBackend<PublicStore>(`/api/admin/stores/${encodeURIComponent(String(storeId))}`);
+
+export const getAdminStoreArticles = (storeId: string | number) =>
+  fetchBackend<AdminArticle[]>(`/api/admin/stores/${encodeURIComponent(String(storeId))}/articles`);
+
+export const createAdminStore = (payload: StoreInput) =>
+  fetchBackend<PublicStore>('/api/admin/stores', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateAdminStore = (id: string | number, payload: StoreInput) =>
+  fetchBackend<PublicStore>(`/api/admin/stores/${encodeURIComponent(String(id))}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+
+export const deleteAdminStore = (id: string | number) =>
+  fetchBackend<{ success: boolean; message: string }>(`/api/admin/stores/${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+
+export const getCreditPlans = () => fetchBackend<CreditPlan[]>('/api/credit-plans');
+
+export const uploadStoreImage = async (file: File): Promise<string> => {
+  const adminToken = typeof window !== 'undefined' ? (localStorage.getItem('adminToken') ?? '') : '';
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(backendUrl('/api/admin/stores/upload-image'), {
+    method: 'POST',
+    body: formData,
+    headers: adminToken ? { 'X-Admin-Token': adminToken } : undefined,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => `HTTP ${res.status}`);
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as { imageUrl?: string; error?: string };
+  if (data.error) throw new Error(data.error);
+  return data.imageUrl ?? '';
+};
 
 export const createAdminArticle = (payload: AdminArticleInput) =>
   fetchBackend<AdminArticle>('/api/admin/articles', {
@@ -249,6 +380,12 @@ export const updateAdminArticle = (id: number, payload: AdminArticleInput) =>
 export const deleteAdminArticle = (id: number) =>
   fetchBackend<{ success: boolean; message: string }>(`/api/admin/articles/${id}`, {
     method: 'DELETE',
+  });
+
+export const updateAdminArticleStatus = (id: number, active: boolean) =>
+  fetchBackend<AdminArticle>(`/api/admin/articles/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ active }),
   });
 
 export const uploadArticleImage = async (file: File): Promise<string> => {

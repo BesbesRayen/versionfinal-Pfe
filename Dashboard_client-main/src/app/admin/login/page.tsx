@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CreditCard, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
 export default function AdminLoginPage() {
@@ -9,6 +9,11 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +34,7 @@ export default function AdminLoginPage() {
       } else {
         localStorage.setItem('adminToken', data.token);
         localStorage.setItem('adminUser', JSON.stringify(data));
-        window.location.href = '/admin';
+        window.location.replace('/admin');
       }
     } catch {
       setError('Erreur réseau. Veuillez réessayer.');

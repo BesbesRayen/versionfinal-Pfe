@@ -82,14 +82,16 @@ export default function Navbar() {
   const handleLogout = async () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
     setJwtUser(null);
 
     if (session) {
-      await signOut({ callbackUrl: '/' });
+      await signOut({ callbackUrl: '/login' });
       return;
     }
 
-    window.location.href = '/';
+    window.location.replace('/login');
   };
 
   return (

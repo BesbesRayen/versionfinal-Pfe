@@ -61,7 +61,6 @@ BEGIN
     CALL reset_table_if_exists('user_wallet');
     CALL reset_table_if_exists('users');
     CALL reset_table_if_exists('articles');
-    CALL reset_table_if_exists('merchants');
     CALL reset_table_if_exists('messages');
 
     COMMIT;
@@ -81,7 +80,6 @@ BEGIN
     CALL reset_identity_if_exists('user_wallet');
     CALL reset_identity_if_exists('users');
     CALL reset_identity_if_exists('articles');
-    CALL reset_identity_if_exists('merchants');
     CALL reset_identity_if_exists('messages');
 END//
 

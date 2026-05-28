@@ -6,12 +6,12 @@ import { confirmForgotPassword, requestForgotPassword } from "@/lib/api";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { colors, radii } from "@/lib/theme";
 
-const OTP_EXPIRY_SECONDS = 300;
+const RESET_EXPIRY_SECONDS = 1800;
 
 const ForgotPassword = () => {
   const { navigate } = useAppNavigation();
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
+  const [token, setToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
@@ -25,7 +25,7 @@ const ForgotPassword = () => {
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
   const startTimer = () => {
-    setSecondsLeft(OTP_EXPIRY_SECONDS);
+    setSecondsLeft(RESET_EXPIRY_SECONDS);
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setSecondsLeft((value) => {
@@ -60,7 +60,7 @@ const ForgotPassword = () => {
       await requestForgotPassword(email.trim());
       setCodeSent(true);
       startTimer();
-      setInfoMessage("Verification code sent. Check your inbox.");
+      setInfoMessage("Reset link sent. Check your inbox.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to send the code.");
     } finally {
@@ -69,12 +69,8 @@ const ForgotPassword = () => {
   };
 
   const resetPassword = async () => {
-    if (!email.trim() || !code.trim() || !newPassword.trim()) {
+    if (!email.trim() || !token.trim() || !newPassword.trim()) {
       setErrorMessage("Complete all fields before continuing.");
-      return;
-    }
-    if (!/^\d{6}$/.test(code.trim())) {
-      setErrorMessage("The verification code must contain 6 digits.");
       return;
     }
     if (newPassword.length < 8) {
@@ -84,7 +80,7 @@ const ForgotPassword = () => {
     setLoading(true);
     clearMessages();
     try {
-      await confirmForgotPassword(email.trim(), code.trim(), newPassword);
+      await confirmForgotPassword(email.trim(), token.trim(), newPassword);
       setResetDone(true);
       if (timerRef.current) clearInterval(timerRef.current);
       setTimeout(() => navigate("Login"), 1600);
@@ -122,7 +118,7 @@ const ForgotPassword = () => {
           </View>
           <Text style={styles.title}>Mot de passe oublie</Text>
           <Text style={styles.subtitle}>
-            Recevez un code temporaire, puis creez un nouveau mot de passe securise.
+            Recevez un lien temporaire, puis creez un nouveau mot de passe securise.
           </Text>
         </View>
 
@@ -148,26 +144,25 @@ const ForgotPassword = () => {
 
           {!codeSent ? (
             <Pressable style={[styles.primaryButton, loading && styles.disabled]} onPress={sendCode} disabled={loading}>
-              {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryText}>Envoyer le code</Text>}
+              {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryText}>Envoyer le lien</Text>}
             </Pressable>
           ) : (
             <>
               <View style={[styles.timerPill, secondsLeft === 0 && styles.timerPillExpired]}>
                 <MaterialCommunityIcons name="timer-outline" size={15} color={secondsLeft > 0 ? colors.success : colors.error} />
                 <Text style={[styles.timerText, secondsLeft === 0 && { color: colors.error }]}>
-                  {secondsLeft > 0 ? `Code valide ${formatCountdown(secondsLeft)}` : "Code expire"}
+                  {secondsLeft > 0 ? `Lien valide ${formatCountdown(secondsLeft)}` : "Lien expire"}
                 </Text>
               </View>
 
-              <Text style={styles.label}>CODE DE VERIFICATION</Text>
+              <Text style={styles.label}>JETON DE REINITIALISATION</Text>
               <TextInput
-                value={code}
-                onChangeText={(value) => { setCode(value.replace(/\D/g, "").slice(0, 6)); clearMessages(); }}
+                value={token}
+                onChangeText={(value) => { setToken(value.trim()); clearMessages(); }}
                 style={styles.input}
-                placeholder="000000"
+                placeholder="Copiez le jeton recu par email"
                 placeholderTextColor={colors.gray400}
-                keyboardType="number-pad"
-                maxLength={6}
+                autoCapitalize="none"
               />
 
               <Text style={styles.label}>NOUVEAU MOT DE PASSE</Text>
@@ -195,7 +190,7 @@ const ForgotPassword = () => {
 
               <Pressable style={styles.secondaryButton} onPress={sendCode} disabled={loading || secondsLeft > 0}>
                 <Text style={[styles.secondaryText, secondsLeft > 0 && styles.secondaryTextDisabled]}>
-                  {secondsLeft > 0 ? `Renvoyer dans ${formatCountdown(secondsLeft)}` : "Renvoyer un code"}
+                  {secondsLeft > 0 ? `Renvoyer dans ${formatCountdown(secondsLeft)}` : "Renvoyer un lien"}
                 </Text>
               </Pressable>
             </>

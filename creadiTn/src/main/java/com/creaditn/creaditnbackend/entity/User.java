@@ -27,6 +27,15 @@ public class User {
     @Column(name = "password_hash", nullable = false)
     private String password;
 
+    @Column(name = "password_reset_token_hash", length = 64)
+    private String passwordResetTokenHash;
+
+    @Column(name = "password_reset_token_expiry")
+    private LocalDateTime passwordResetTokenExpiry;
+
+    @Column(name = "password_reset_requested_at")
+    private LocalDateTime passwordResetRequestedAt;
+
     private String phone;
     private String address;
     private String profession;

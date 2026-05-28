@@ -9,13 +9,20 @@ import com.creaditn.creaditnbackend.repository.UserWalletRepository;
 import com.creaditn.creaditnbackend.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +38,7 @@ public class AuthService {
     private static final int MAX_VERIFY_ATTEMPTS  = 5;
     private static final int RESEND_COOLDOWN_SECS = 60;
     private static final int OTP_EXPIRY_MINUTES   = 5;
+    private static final int RESET_TOKEN_BYTES    = 32;
 
     private final UserRepository userRepository;
     private final UserWalletRepository userWalletRepository;
@@ -38,10 +46,15 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-    private final Map<String, ResetSession> resetSessions = new ConcurrentHashMap<>();
     private final Map<String, RecoveryAttempt> emailRecoveryAttempts = new ConcurrentHashMap<>();
     private final Map<String, EmailRevealSession> emailRevealSessions = new ConcurrentHashMap<>();
     private final SecureRandom secureRandom = new SecureRandom();
+
+    @Value("${app.password-reset.base-url:http://localhost:3000/forgot-password}")
+    private String passwordResetBaseUrl;
+
+    @Value("${app.password-reset.expiry-minutes:30}")
+    private long passwordResetExpiryMinutes;
 
     private String normalizeEmail(String email) {
         return email == null ? "" : email.trim().toLowerCase();
@@ -243,6 +256,7 @@ public class AuthService {
                 .build();
     }
 
+    @Transactional
     public ApiResponse requestPasswordReset(ForgotPasswordRequest request) {
         String identifier = normalizeIdentifier(request.getIdentifier());
         if (identifier.isBlank()) {
@@ -250,39 +264,56 @@ public class AuthService {
         }
 
         User user = findByIdentifier(identifier);
-        String code = generateOtp();
-        resetSessions.put(identifier, new ResetSession(user.getId(), code, LocalDateTime.now().plusMinutes(10)));
+        String token = generateResetToken();
+        LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(passwordResetExpiryMinutes);
+        user.setPasswordResetTokenHash(hashResetToken(token));
+        user.setPasswordResetTokenExpiry(expiresAt);
+        user.setPasswordResetRequestedAt(LocalDateTime.now());
+        userRepository.save(user);
 
-        if (identifier.contains("@")) {
-            try { emailService.sendOtp(user.getEmail(), user.getFirstName(), code); } catch (Exception ignored) {}
+        String resetLink = buildPasswordResetLink(user.getEmail(), token);
+        boolean sent = emailService.sendPasswordResetLink(
+                user.getEmail(),
+                user.getFirstName(),
+                resetLink,
+                token,
+                passwordResetExpiryMinutes
+        );
+        if (!sent) {
+            clearPasswordResetToken(user);
+            userRepository.save(user);
+            throw new BadRequestException("Service email indisponible. Verifiez la configuration SMTP.");
         }
 
-        return ApiResponse.success("Un code de verification a ete envoye a votre " +
-                (identifier.contains("@") ? "email" : "numero de telephone") + ".");
+        return ApiResponse.success("Un lien de reinitialisation a ete envoye a votre email.");
     }
 
+    @Transactional
+    public ApiResponse validatePasswordReset(ForgotPasswordValidateRequest request) {
+        User user = findByIdentifier(normalizeIdentifier(request.getIdentifier()));
+        validateStoredResetToken(user, request.getToken());
+        Duration remaining = Duration.between(LocalDateTime.now(), user.getPasswordResetTokenExpiry());
+        return ApiResponse.success("Lien de reinitialisation valide.", Map.of(
+                "expiresInSeconds", Math.max(0, remaining.toSeconds())
+        ));
+    }
+
+    @Transactional
     public ApiResponse confirmPasswordReset(ForgotPasswordConfirmRequest request) {
         String identifier = normalizeIdentifier(request.getIdentifier());
-        ResetSession session = resetSessions.get(identifier);
-        if (session == null) {
-            throw new BadRequestException("Aucune demande de reinitialisation trouvee. Recommencez.");
+        if (identifier.isBlank()) {
+            throw new BadRequestException("Email ou numero de telephone requis");
         }
-        if (LocalDateTime.now().isAfter(session.expiresAt())) {
-            resetSessions.remove(identifier);
-            throw new BadRequestException("Code expire. Veuillez demander un nouveau code.");
-        }
-        if (!session.code().equals(request.getCode().trim())) {
-            throw new BadRequestException("Code de verification incorrect.");
-        }
+        User user = findByIdentifier(identifier);
+        validateStoredResetToken(user, request.resolveToken());
+
         if (request.getNewPassword() == null || request.getNewPassword().length() < 8) {
             throw new BadRequestException("Le nouveau mot de passe doit contenir au moins 8 caracteres.");
         }
 
-        User user = userRepository.findById(session.userId())
-                .orElseThrow(() -> new BadRequestException("Utilisateur introuvable"));
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        clearPasswordResetToken(user);
         userRepository.save(user);
-        resetSessions.remove(identifier);
 
         try { emailService.sendPasswordChanged(user.getEmail(), user.getFirstName()); } catch (Exception ignored) {}
 
@@ -399,10 +430,10 @@ public class AuthService {
     }
 
     public void clearPasswordResetSessions() {
-        resetSessions.clear();
+        List<User> users = userRepository.findAll();
+        users.forEach(this::clearPasswordResetToken);
+        userRepository.saveAll(users);
     }
-
-    private record ResetSession(Long userId, String code, LocalDateTime expiresAt) {}
 
     private record RecoveryAttempt(int count, LocalDateTime lockedUntil) {}
 
@@ -410,6 +441,56 @@ public class AuthService {
 
     private String generateOtp() {
         return String.valueOf(100000 + secureRandom.nextInt(900000));
+    }
+
+    private String generateResetToken() {
+        byte[] bytes = new byte[RESET_TOKEN_BYTES];
+        secureRandom.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String hashResetToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception ex) {
+            throw new IllegalStateException("Unable to hash password reset token", ex);
+        }
+    }
+
+    private String buildPasswordResetLink(String email, String token) {
+        return UriComponentsBuilder.fromUriString(passwordResetBaseUrl)
+                .queryParam("email", email)
+                .queryParam("token", token)
+                .build()
+                .toUriString();
+    }
+
+    private void validateStoredResetToken(User user, String token) {
+        if (token == null || token.isBlank()
+                || user.getPasswordResetTokenHash() == null
+                || user.getPasswordResetTokenExpiry() == null) {
+            throw new BadRequestException("Lien de reinitialisation introuvable. Recommencez.");
+        }
+        if (LocalDateTime.now().isAfter(user.getPasswordResetTokenExpiry())) {
+            clearPasswordResetToken(user);
+            userRepository.save(user);
+            throw new BadRequestException("Lien de reinitialisation expire. Veuillez demander un nouveau lien.");
+        }
+        String candidateHash = hashResetToken(token.trim());
+        boolean matches = MessageDigest.isEqual(
+                user.getPasswordResetTokenHash().getBytes(StandardCharsets.UTF_8),
+                candidateHash.getBytes(StandardCharsets.UTF_8)
+        );
+        if (!matches) {
+            throw new BadRequestException("Lien de reinitialisation invalide.");
+        }
+    }
+
+    private void clearPasswordResetToken(User user) {
+        user.setPasswordResetTokenHash(null);
+        user.setPasswordResetTokenExpiry(null);
+        user.setPasswordResetRequestedAt(null);
     }
 
     private List<User> findEmailRecoveryCandidates(String identifier) {

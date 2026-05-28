@@ -107,7 +107,7 @@ const Shops = () => {
         <View style={styles.list}>
           {filtered.map((store) => (
             <ShopListItem
-              key={store.id}
+              key={`shop-${store.slug ?? store.id}-${store.name}`}
               shop={store}
               onPress={() => navigate("ShopProducts", { merchantId: store.id, merchantName: store.name })}
             />

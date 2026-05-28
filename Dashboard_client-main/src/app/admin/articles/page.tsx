@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   CheckCircle2,
@@ -19,11 +21,14 @@ import {
   AdminArticle,
   AdminArticleInput,
   ProductImportResult,
+  PublicStore,
   createAdminArticle,
   deleteAdminArticle,
   getAdminArticles,
+  getAdminStores,
   importProductFromUrl,
   updateAdminArticle,
+  updateAdminArticleStatus,
   uploadArticleImage,
   BACKEND,
 } from '@/lib/api';
@@ -36,13 +41,121 @@ const emptyForm: AdminArticleInput = {
   boutiqueName: '',
   category: '',
   sourceUrl: '',
+  active: true,
+  available: true,
+  eligibleThreeMonths: true,
+  eligibleSixMonths: true,
+  eligibleTwelveMonths: true,
 };
 
+type StorePrefillRequest = {
+  storeId?: string | null;
+  storeSlug?: string | null;
+  store?: string | null;
+  boutique?: string | null;
+  category?: string | null;
+  manual: boolean;
+  fromStores: boolean;
+};
+
+function imageSrc(src: string) {
+  if (!src) return '';
+  return src.startsWith('/') ? `${BACKEND}${src}` : src;
+}
+
+function normalizeLookup(value?: string | null) {
+  let decoded = value || '';
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    decoded = value || '';
+  }
+  return decoded
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function findStoreForPrefill(stores: PublicStore[], request: StorePrefillRequest | null) {
+  if (!request) return null;
+  const numericStoreId = request.storeId ? Number(request.storeId) : NaN;
+  if (Number.isFinite(numericStoreId)) {
+    const byId = stores.find((store) => store.id === numericStoreId);
+    if (byId) return byId;
+  }
+
+  const candidates = [request.storeSlug, request.store, request.boutique].map(normalizeLookup).filter(Boolean);
+  return stores.find((store) => {
+    const storeName = normalizeLookup(store.name);
+    const storeSlug = normalizeLookup(store.slug);
+    return candidates.some((candidate) => candidate === storeSlug || candidate === storeName);
+  }) || null;
+}
+
+function normalizeHost(value?: string | null) {
+  if (!value) return '';
+  try {
+    const url = new URL(value.startsWith('http') ? value : `https://${value}`);
+    return url.hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return value.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+  }
+}
+
+function findStoreForImport(stores: PublicStore[], result: ProductImportResult | null, rawUrl: string) {
+  const sourceHost = normalizeHost(result?.sourceUrl || rawUrl);
+  const importedDomain = normalizeHost(result?.store?.domain);
+  const importedNames = [result?.store?.name, result?.brand].map(normalizeLookup).filter(Boolean);
+
+  return stores.find((store) => {
+    const storeHost = normalizeHost(store.websiteUrl);
+    const storeName = normalizeLookup(store.name);
+    const hostMatches = Boolean(
+      sourceHost && (storeHost === sourceHost || sourceHost.endsWith(`.${storeHost}`) || storeHost.endsWith(`.${sourceHost}`)),
+    );
+    const importedDomainMatches = Boolean(
+      importedDomain && (storeHost === importedDomain || importedDomain.endsWith(`.${storeHost}`) || storeHost.endsWith(`.${importedDomain}`)),
+    );
+    const nameMatches = importedNames.some((name) => name === storeName);
+    return hostMatches || importedDomainMatches || nameMatches;
+  }) || null;
+}
+
+function parseImportedPrice(value?: string) {
+  const normalized = (value || '').replace(/\s+/g, '').replace(',', '.');
+  const match = normalized.match(/\d+(?:\.\d+)?/);
+  if (!match) return 0;
+  const price = Number(match[0]);
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  return Number(price.toFixed(3));
+}
+
+function cleanImportedText(value?: string) {
+  const text = (value || '').trim();
+  if (!text) return '';
+  const lower = text.toLowerCase();
+  if (lower.includes('comment_text') || /[{][!=%#]/.test(text)) return '';
+  return text;
+}
+
+function displayImportedPrice(value?: string) {
+  const price = parseImportedPrice(value);
+  return price > 0 ? String(price) : value;
+}
+
 export default function AdminArticlesPage() {
+  const router = useRouter();
   const [articles, setArticles] = useState<AdminArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const [storeFilter, setStoreFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 8;
+  const [stores, setStores] = useState<PublicStore[]>([]);
   const [openModal, setOpenModal] = useState(false);
   const [editing, setEditing] = useState<AdminArticle | null>(null);
   const [form, setForm] = useState<AdminArticleInput>(emptyForm);
@@ -50,11 +163,16 @@ export default function AdminArticlesPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [uploading, setUploading] = useState(false);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [manualMode, setManualMode] = useState(false);
+  const [returnToStores, setReturnToStores] = useState(false);
+  const [storePrefill, setStorePrefill] = useState<StorePrefillRequest | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [statusLoadingId, setStatusLoadingId] = useState<number | null>(null);
 
   const toggleSelectAll = () => {
     if (isAllSelected) {
@@ -103,7 +221,12 @@ export default function AdminArticlesPage() {
 
   const loadArticles = async () => {
     try {
-      const data = await getAdminArticles();
+      const data = await getAdminArticles({
+        search: search || undefined,
+        category: categoryFilter === 'all' ? undefined : categoryFilter,
+        storeId: storeFilter === 'all' ? undefined : Number(storeFilter),
+        active: statusFilter === 'all' ? undefined : statusFilter === 'published',
+      });
       setArticles(data);
       setError('');
     } catch (e) {
@@ -114,41 +237,164 @@ export default function AdminArticlesPage() {
   };
 
   useEffect(() => {
-    loadArticles();
+    void loadArticles();
+    void getAdminStores().then(setStores).catch(() => setStores([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return articles;
-    return articles.filter((article) =>
-      [article.productName, article.boutiqueName, article.category]
-        .join(' ')
-        .toLowerCase()
-        .includes(q),
-    );
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1);
+      void loadArticles();
+    }, 250);
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [articles, search]);
+  }, [search, storeFilter, categoryFilter, statusFilter]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialSearch = params.get('search');
+    const boutique = params.get('boutique');
+    const category = params.get('category');
+    const storeId = params.get('storeId');
+    const storeSlug = params.get('storeSlug');
+    const store = params.get('store');
+    const manual = params.get('manual') === '1';
+    const fromStores = params.get('from') === 'stores';
+    const request: StorePrefillRequest = {
+      storeId,
+      storeSlug,
+      store,
+      boutique,
+      category,
+      manual,
+      fromStores,
+    };
+
+    if (initialSearch) {
+      setSearch(initialSearch);
+    }
+
+    if (storeId || storeSlug || store || boutique) {
+      const numericStoreId = storeId ? Number(storeId) : undefined;
+      if (storeId && Number.isFinite(numericStoreId)) {
+        setStoreFilter(storeId);
+      }
+      if (category) setCategoryFilter(category);
+      setStorePrefill(request);
+      setManualMode(manual);
+      setReturnToStores(fromStores);
+      setEditing(null);
+      setForm({
+        ...emptyForm,
+        storeId: Number.isFinite(numericStoreId) ? numericStoreId : undefined,
+        boutiqueName: store || boutique || '',
+        category: category || '',
+      });
+      setImagePreview('');
+      setImportUrl('');
+      setImportError('');
+      setImportWarning('');
+      setImportedPreview(null);
+      setOpenModal(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!storePrefill || stores.length === 0) return;
+    const selected = findStoreForPrefill(stores, storePrefill);
+    if (!selected) return;
+    setStoreFilter(String(selected.id));
+    setForm((prev) => ({
+      ...prev,
+      boutiqueName: selected.name,
+      category: prev.category || storePrefill.category || selected.category,
+      storeId: selected.id,
+    }));
+  }, [storePrefill, stores]);
+
+  useEffect(() => {
+    if (!form.storeId || stores.length === 0) return;
+    const selected = stores.find((store) => store.id === form.storeId);
+    if (!selected) return;
+    setForm((prev) => {
+      if (prev.boutiqueName === selected.name && (prev.category || selected.category) === prev.category) {
+        return prev;
+      }
+      return {
+        ...prev,
+        boutiqueName: selected.name,
+        category: prev.category || selected.category,
+      };
+    });
+  }, [form.storeId, stores]);
+
+  const categories = useMemo(() => Array.from(new Set(articles.map((article) => article.category).filter(Boolean))).sort(), [articles]);
+  const filtered = articles;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const selectedStore = form.storeId ? stores.find((store) => store.id === form.storeId) : null;
+  const prefilledStoreLabel = form.boutiqueName || storePrefill?.store || storePrefill?.boutique || '';
+  const selectedStoreAntiRobotLevel = selectedStore?.antiRobotLevel || (selectedStore?.hasAntiRobot ? 'soft' : 'none');
+  const isHardAntiRobotStore = selectedStoreAntiRobotLevel === 'hard';
 
   const isAllSelected = filtered.length > 0 && filtered.every((a) => selectedIds.has(a.id));
   const isIndeterminate = !isAllSelected && filtered.some((a) => selectedIds.has(a.id));
+
+  const clearArticleUrl = () => {
+    if (typeof window !== 'undefined' && window.location.search) {
+      router.replace('/admin/articles', { scroll: false });
+    }
+  };
+
+  const handleStoreChange = (value: string) => {
+    if (value === '__prefill__') return;
+    if (!value) {
+      setForm((prev) => ({ ...prev, storeId: undefined, boutiqueName: '' }));
+      return;
+    }
+    const storeId = Number(value);
+    const selected = stores.find((store) => store.id === storeId);
+    if (!selected) {
+      setError('Boutique introuvable dans le registry.');
+      return;
+    }
+    setError('');
+    setForm((prev) => ({
+      ...prev,
+      storeId: selected.id,
+      boutiqueName: selected.name,
+      category: prev.category || selected.category || '',
+    }));
+  };
 
   const resetModal = () => {
     setOpenModal(false);
     setEditing(null);
     setForm(emptyForm);
+    setManualMode(false);
+    setReturnToStores(false);
+    setStorePrefill(null);
     setImagePreview('');
     setImportUrl('');
     setImportError('');
+    setImportWarning('');
     setImportedPreview(null);
+    clearArticleUrl();
   };
 
   const openCreate = () => {
     setEditing(null);
     setForm(emptyForm);
+    setManualMode(false);
+    setReturnToStores(false);
+    setStorePrefill(null);
     setImagePreview('');
     setImportUrl('');
     setImportError('');
+    setImportWarning('');
     setImportedPreview(null);
+    clearArticleUrl();
     setOpenModal(true);
   };
 
@@ -160,8 +406,14 @@ export default function AdminArticlesPage() {
       price: article.price,
       imageUrl: article.imageUrl,
       boutiqueName: article.boutiqueName,
+      storeId: article.storeId,
       category: article.category,
       sourceUrl: article.sourceUrl ?? '',
+      active: article.active,
+      available: article.available ?? true,
+      eligibleThreeMonths: article.eligibleThreeMonths ?? true,
+      eligibleSixMonths: article.eligibleSixMonths ?? true,
+      eligibleTwelveMonths: article.eligibleTwelveMonths ?? true,
     });
     const preview = article.imageUrl?.startsWith('/')
       ? `${BACKEND}${article.imageUrl}`
@@ -170,6 +422,9 @@ export default function AdminArticlesPage() {
     setImportUrl('');
     setImportError('');
     setImportedPreview(null);
+    setManualMode(false);
+    setReturnToStores(false);
+    setStorePrefill(null);
     setOpenModal(true);
   };
   // ── URL Import ────────────────────────────────────────────────────────────
@@ -223,10 +478,13 @@ export default function AdminArticlesPage() {
       if (!result.valid) {
         // Graceful fallback: extract what we can from the URL itself
         const fallback = extractFromUrlClientSide(importUrl.trim());
+        const resolvedStore = findStoreForImport(stores, null, importUrl.trim());
         setForm((prev) => ({
           ...prev,
           productName: fallback.name || prev.productName,
-          boutiqueName: fallback.brand || prev.boutiqueName,
+          storeId: prev.storeId || resolvedStore?.id,
+          boutiqueName: prev.storeId ? prev.boutiqueName : resolvedStore?.name || fallback.brand || prev.boutiqueName,
+          category: prev.category || resolvedStore?.category || '',
           sourceUrl: importUrl.trim(),
         }));
         setImportWarning(
@@ -243,15 +501,21 @@ export default function AdminArticlesPage() {
       setImportedPreview(result);
 
       // Auto-fill the form
-      const priceNum = parseFloat((result.price ?? '').replace(',', '.')) || 0;
+      const priceNum = parseImportedPrice(result.price);
+      const importedDescription = cleanImportedText(result.description);
+      const resolvedStore = findStoreForImport(stores, result, importUrl.trim());
+      const fallbackDescription = result.name
+        ? `${result.name} importe depuis ${resolvedStore?.name || result.brand || 'la boutique source'}.`
+        : '';
       setForm((prev) => ({
         ...prev,
         productName: result.name || prev.productName,
-        description: result.description || prev.description,
+        description: importedDescription || prev.description || fallbackDescription,
         price: priceNum > 0 ? priceNum : prev.price,
         imageUrl: result.images?.[0] ?? prev.imageUrl,
-        boutiqueName: result.brand || prev.boutiqueName,
-        category: result.category || prev.category,
+        storeId: prev.storeId || resolvedStore?.id,
+        boutiqueName: prev.storeId ? prev.boutiqueName : resolvedStore?.name || result.brand || prev.boutiqueName,
+        category: result.category || prev.category || resolvedStore?.category || '',
         sourceUrl: result.sourceUrl || importUrl.trim(),
       }));
 
@@ -288,13 +552,26 @@ export default function AdminArticlesPage() {
   };
 
   const onSave = async () => {
-    if (!form.productName || !form.description || !form.imageUrl || !form.boutiqueName || !form.category) {
-      setError('Please fill all required fields');
+    const selectedFormStore = form.storeId
+      ? stores.find((store) => store.id === form.storeId) || {
+        id: form.storeId,
+        name: form.boutiqueName || prefilledStoreLabel,
+        category: form.category,
+      }
+      : stores.find((store) => normalizeLookup(store.name) === normalizeLookup(form.boutiqueName)) || null;
+
+    if (!selectedFormStore || !selectedFormStore.name) {
+      setError('Selectionnez une boutique. Les articles doivent etre lies a une boutique registry.');
+      return;
+    }
+
+    if (!form.productName.trim() || !form.description.trim() || !form.imageUrl.trim() || !form.category.trim()) {
+      setError('Veuillez remplir tous les champs obligatoires.');
       return;
     }
 
     if (form.price <= 0) {
-      setError('Price must be greater than zero');
+      setError('Le prix doit etre superieur a zero.');
       return;
     }
 
@@ -302,10 +579,17 @@ export default function AdminArticlesPage() {
     setError('');
     setSuccessMsg('');
     try {
+      const payload: AdminArticleInput = {
+        ...form,
+        storeId: selectedFormStore.id,
+        boutiqueName: selectedFormStore.name,
+        category: form.category || selectedFormStore.category,
+      };
+
       if (editing) {
-        await updateAdminArticle(editing.id, form);
+        await updateAdminArticle(editing.id, payload);
       } else {
-        await createAdminArticle(form);
+        await createAdminArticle(payload);
       }
       const wasEditing = !!editing;
       resetModal();
@@ -327,12 +611,35 @@ export default function AdminArticlesPage() {
   };
 
   const onDelete = async (article: AdminArticle) => {
-    if (!confirm(`Delete article \"${article.productName}\"?`)) return;
+    if (!confirm(`Supprimer l'article "${article.productName}" ?`)) return;
+    setDeletingId(article.id);
+    setError('');
+    setSuccessMsg('');
     try {
       await deleteAdminArticle(article.id);
       setArticles((prev) => prev.filter((a) => a.id !== article.id));
+      setSuccessMsg('Article supprime avec succes.');
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to delete article');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const toggleStatus = async (article: AdminArticle) => {
+    setStatusLoadingId(article.id);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const updated = await updateAdminArticleStatus(article.id, !article.active);
+      setArticles((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      setSuccessMsg(updated.active ? 'Article publie.' : 'Article passe en brouillon.');
+      setTimeout(() => setSuccessMsg(''), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Impossible de modifier le statut.');
+    } finally {
+      setStatusLoadingId(null);
     }
   };
 
@@ -401,15 +708,30 @@ export default function AdminArticlesPage() {
         </div>
       )}
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 bg-[#111827] border border-white/10 rounded-xl text-sm text-white placeholder-gray-500"
-          placeholder="Rechercher par produit, boutique ou categorie"
-        />
+      {/* Filters */}
+      <div className="grid gap-3 rounded-2xl border border-white/10 bg-[#111827] p-3 lg:grid-cols-[1fr_220px_180px_190px]">
+        <div className="relative">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-[#0a0f1c] border border-white/10 rounded-xl text-sm text-white placeholder-gray-500"
+            placeholder="Rechercher par produit, boutique ou categorie"
+          />
+        </div>
+        <select value={storeFilter} onChange={(e) => setStoreFilter(e.target.value)} className="rounded-xl border border-white/10 bg-[#0a0f1c] px-3 py-2.5 text-sm font-semibold text-white">
+          <option value="all">Toutes les boutiques</option>
+          {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+        </select>
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-xl border border-white/10 bg-[#0a0f1c] px-3 py-2.5 text-sm font-semibold text-white">
+          <option value="all">Toutes categories</option>
+          {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-xl border border-white/10 bg-[#0a0f1c] px-3 py-2.5 text-sm font-semibold text-white">
+          <option value="all">Tous statuts</option>
+          <option value="published">Publie</option>
+          <option value="draft">Brouillon</option>
+        </select>
       </div>
 
       {/* Table */}
@@ -448,7 +770,7 @@ export default function AdminArticlesPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((article) => (
+                paginated.map((article) => (
                   <tr key={article.id} className={`hover:bg-[#0a0f1c] transition-colors ${selectedIds.has(article.id) ? 'bg-indigo-500/5' : ''}`}>
                     <td className="px-5 py-4">
                       <input
@@ -461,7 +783,7 @@ export default function AdminArticlesPage() {
                     <td className="px-5 py-4">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={article.imageUrl}
+                        src={imageSrc(article.imageUrl)}
                         alt={article.productName}
                         className="w-12 h-12 rounded-lg object-cover border border-white/10"
                       />
@@ -482,7 +804,12 @@ export default function AdminArticlesPage() {
                       )}
                     </td>
                     <td className="px-5 py-4 text-sm text-gray-300">{article.boutiqueName}</td>
-                    <td className="px-5 py-4 text-sm text-gray-400">{article.category}</td>
+                    <td className="px-5 py-4">
+                      <div className="text-sm text-gray-400">{article.category}</div>
+                      <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${article.active ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-300' : 'border-slate-400/20 bg-slate-500/10 text-slate-300'}`}>
+                        {article.active ? 'Publie' : 'Brouillon'}
+                      </span>
+                    </td>
                     <td className="px-5 py-4 text-sm text-emerald-400 font-semibold">{Math.round(article.price)} TND</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
@@ -494,11 +821,20 @@ export default function AdminArticlesPage() {
                           Modifier
                         </button>
                         <button
-                          onClick={() => onDelete(article)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-semibold"
+                          onClick={() => toggleStatus(article)}
+                          disabled={statusLoadingId === article.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold disabled:opacity-60"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Supprimer
+                          {statusLoadingId === article.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                          {article.active ? 'Brouillon' : 'Publier'}
+                        </button>
+                        <button
+                          onClick={() => onDelete(article)}
+                          disabled={deletingId === article.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-semibold disabled:opacity-60"
+                        >
+                          {deletingId === article.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          {deletingId === article.id ? 'Suppression' : 'Supprimer'}
                         </button>
                       </div>
                     </td>
@@ -510,53 +846,81 @@ export default function AdminArticlesPage() {
         </div>
       </div>
 
-      {/* Modal */}
-      {openModal && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl bg-[#111827] border border-white/10 rounded-2xl p-6 space-y-5 my-8">
+      {!loading && filtered.length > 0 && (
+        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-[#111827] px-4 py-3 text-sm text-gray-400">
+          <span>Page {page} / {totalPages} - {filtered.length} article{filtered.length > 1 ? 's' : ''}</span>
+          <div className="flex gap-2">
+            <button disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-xl border border-white/10 px-3 py-2 font-bold text-white disabled:opacity-40">Precedent</button>
+            <button disabled={page >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="rounded-xl border border-white/10 px-3 py-2 font-bold text-white disabled:opacity-40">Suivant</button>
+          </div>
+        </div>
+      )}
 
-            {/* Modal header */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg text-white font-bold">
-                {editing ? 'Modifier article' : 'Ajouter article'}
-              </h2>
-              <button onClick={resetModal} className="p-2 rounded-lg hover:bg-white/10 text-gray-400">
-                <X className="w-4 h-4" />
-              </button>
+      {/* Modal */}
+      {openModal && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-stretch justify-center overflow-hidden bg-slate-950/80 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
+          <div className="my-auto grid h-[calc(100dvh-1.5rem)] max-h-[780px] min-h-0 w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-2xl border border-white/10 bg-[#111827] shadow-2xl shadow-black/70 sm:h-[min(85dvh,780px)]">
+
+            <div className="border-b border-white/10 bg-[#111827]/95 px-5 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-500/10 px-3 py-1 text-xs font-bold text-indigo-200">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Catalogue partenaire
+                  </div>
+                  <h2 className="text-xl font-black text-white">
+                    {editing ? 'Modifier article' : manualMode ? 'Ajouter article manuel' : 'Ajouter article'}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {returnToStores ? 'Boutique preselectionnee depuis la page boutiques.' : 'Creez un vrai article rattache a une boutique registry.'}
+                  </p>
+                </div>
+                <button onClick={resetModal} className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-slate-400 transition hover:bg-white/10 hover:text-white" aria-label="Fermer le modal">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
+            <div className="min-h-0 space-y-5 overflow-y-auto overscroll-contain px-5 py-5">
+              {manualMode && (
+                <div className="rounded-2xl border border-orange-300/25 bg-orange-500/10 p-4 text-sm font-semibold text-orange-100">
+                  {isHardAntiRobotStore ? 'Ajout manuel requis pour cette boutique anti-robot.' : 'Ajout manuel active.'} Aucun produit fake ne sera cree: renseignez un vrai article et sa boutique.
+                </div>
+              )}
+
             {/* ── Smart URL Import (new articles only) ── */}
-            {!editing && (
-              <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 p-4 space-y-3">
-                <div className="flex items-center gap-2 text-indigo-300 text-sm font-semibold">
-                  <Sparkles className="w-4 h-4" />
+            {!editing && !manualMode && (
+              <div className="space-y-3 rounded-2xl border border-indigo-400/20 bg-indigo-500/[0.07] p-4 shadow-xl shadow-black/10">
+                <div className="flex items-center gap-2 text-sm font-black text-indigo-200">
+                  <Sparkles className="h-4 w-4" />
                   Import intelligent depuis une URL produit
                 </div>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs leading-5 text-slate-400">
                   Collez l&apos;URL d&apos;un produit (Zara, Decathlon, MyTek, Mega PC…) pour remplir automatiquement le formulaire.
                 </p>
 
-                <div className="flex gap-2">
+                <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                   <input
                     value={importUrl}
                     onChange={(e) => { setImportUrl(e.target.value); setImportError(''); setImportWarning(''); }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleImportUrl()}
+                    onKeyDown={(e) => { if (e.key === 'Enter') void handleImportUrl(); }}
                     placeholder="https://www.exemple.com/produit/..."
-                    className="flex-1 px-3 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-white text-sm placeholder-gray-600 focus:border-indigo-500/50 focus:outline-none"
+                    className="h-12 w-full rounded-xl border border-white/10 bg-[#0a0f1c] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
                   />
                   <button
-                    onClick={handleImportUrl}
+                    type="button"
+                    onClick={() => void handleImportUrl()}
                     disabled={importing}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-semibold transition-colors whitespace-nowrap"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 text-sm font-black text-white transition hover:bg-indigo-400 disabled:opacity-60"
                   >
                     {importing ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin" />
                         Analyse...
                       </>
                     ) : (
                       <>
-                        <Link2 className="w-4 h-4" />
+                        <Link2 className="h-4 w-4" />
                         Importer
                       </>
                     )}
@@ -564,36 +928,36 @@ export default function AdminArticlesPage() {
                 </div>
 
                 {importError && (
-                  <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-400/20 text-red-300 text-xs">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-2 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-xs font-semibold text-red-300">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     {importError}
                   </div>
                 )}
 
                 {importWarning && !importError && (
-                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-400/20 text-amber-300 text-xs">
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-xs font-semibold text-amber-300">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     {importWarning}
                   </div>
                 )}
 
                 {importedPreview && importedPreview.valid && (
-                  <div className="flex items-start gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-400/20">
+                  <div className="flex items-start gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 p-3">
                     {importedPreview.images?.[0] && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={importedPreview.images[0]}
                         alt={importedPreview.name}
-                        className="w-16 h-16 rounded-lg object-cover border border-white/10 shrink-0"
+                        className="h-16 w-16 shrink-0 rounded-lg border border-white/10 object-cover"
                       />
                     )}
-                    <div className="flex-1 min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <p className="text-sm text-white font-medium truncate">{importedPreview.name}</p>
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                        <p className="truncate text-sm font-bold text-white">{importedPreview.name}</p>
                       </div>
                       {importedPreview.price && (
-                        <p className="text-sm text-emerald-400 font-semibold mt-0.5">{importedPreview.price} TND</p>
+                        <p className="text-sm text-emerald-400 font-semibold mt-0.5">{displayImportedPrice(importedPreview.price)} TND</p>
                       )}
                       {importedPreview.brand && (
                         <p className="text-xs text-gray-400 mt-0.5">Marque: {importedPreview.brand}</p>
@@ -618,52 +982,103 @@ export default function AdminArticlesPage() {
               </div>
             )}
 
-            {/* Form fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                value={form.productName}
-                onChange={(e) => setForm((prev) => ({ ...prev, productName: e.target.value }))}
-                placeholder="Nom du produit *"
-                className="px-3 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-white text-sm focus:border-indigo-500/50 focus:outline-none"
-              />
-              <input
-                value={form.price || ''}
-                type="number"
-                min="0"
-                step="0.01"
-                onChange={(e) => setForm((prev) => ({ ...prev, price: Number(e.target.value) }))}
-                placeholder="Prix (TND) *"
-                className="px-3 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-white text-sm focus:border-indigo-500/50 focus:outline-none"
-              />
-              <input
-                value={form.boutiqueName}
-                onChange={(e) => setForm((prev) => ({ ...prev, boutiqueName: e.target.value }))}
-                placeholder="Boutique / Marque *"
-                className="px-3 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-white text-sm focus:border-indigo-500/50 focus:outline-none"
-              />
-              <input
-                value={form.category}
-                onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))}
-                placeholder="Categorie *"
-                className="px-3 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-white text-sm focus:border-indigo-500/50 focus:outline-none"
-              />
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Nom du produit *</span>
+                <input
+                  value={form.productName}
+                  onChange={(e) => setForm((prev) => ({ ...prev, productName: e.target.value }))}
+                  placeholder="Ex: Serum vitamine C"
+                  className="h-12 w-full rounded-xl border border-white/10 bg-[#0a0f1c] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Prix (TND) *</span>
+                <input
+                  value={form.price || ''}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  onChange={(e) => setForm((prev) => ({ ...prev, price: Number(e.target.value) }))}
+                  placeholder="0.00"
+                  className="h-12 w-full rounded-xl border border-white/10 bg-[#0a0f1c] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Boutique *</span>
+                <select
+                  value={form.storeId ? String(form.storeId) : prefilledStoreLabel ? '__prefill__' : ''}
+                  onChange={(e) => handleStoreChange(e.target.value)}
+                  className="h-12 w-full rounded-xl border border-white/10 bg-[#0a0f1c] px-4 text-sm font-semibold text-white outline-none transition focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
+                >
+                  <option value="">Selectionner une boutique</option>
+                  {prefilledStoreLabel && !stores.some((store) => store.id === form.storeId || store.name === prefilledStoreLabel) && (
+                    <option value={form.storeId ? String(form.storeId) : '__prefill__'}>
+                      {prefilledStoreLabel}
+                    </option>
+                  )}
+                  {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Categorie *</span>
+                <input
+                  value={form.category}
+                  onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))}
+                  placeholder="Categorie"
+                  className="h-12 w-full rounded-xl border border-white/10 bg-[#0a0f1c] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
+                />
+              </label>
             </div>
 
-            <input
-              value={form.imageUrl}
-              onChange={(e) => {
-                setForm((prev) => ({ ...prev, imageUrl: e.target.value }));
-                setImagePreview(e.target.value);
-              }}
-              placeholder="URL de l'image (ou charger un fichier ci-dessous)"
-              className="w-full px-3 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-white text-sm focus:border-indigo-500/50 focus:outline-none"
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                ['active', 'Article actif'],
+                ['available', 'Disponible'],
+                ['eligibleThreeMonths', 'Eligible 3 mois'],
+                ['eligibleSixMonths', 'Eligible 6 mois'],
+                ['eligibleTwelveMonths', 'Eligible 12 mois'],
+              ].map(([field, label]) => (
+                <label key={field} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0a0f1c] px-3 py-2.5 text-sm font-semibold text-gray-200">
+                  {label}
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form[field as keyof AdminArticleInput])}
+                    onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.checked }))}
+                    className="h-4 w-4 accent-indigo-500"
+                  />
+                </label>
+              ))}
+            </div>
 
-            <div className="flex items-center gap-3">
+            <label className="block">
+              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Image produit *</span>
+              <input
+                value={form.imageUrl}
+                onChange={(e) => {
+                  setForm((prev) => ({ ...prev, imageUrl: e.target.value }));
+                  setImagePreview(e.target.value);
+                }}
+                placeholder="URL de l'image ou fichier charge"
+                className="h-12 w-full rounded-xl border border-white/10 bg-[#0a0f1c] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Lien source produit</span>
+              <input
+                value={form.sourceUrl || ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, sourceUrl: e.target.value }))}
+                placeholder="https://..."
+                className="h-12 w-full rounded-xl border border-white/10 bg-[#0a0f1c] px-4 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
+              />
+            </label>
+
+            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#0a0f1c] p-3">
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png"
+                accept="image/jpeg,image/png,image/webp"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -671,34 +1086,37 @@ export default function AdminArticlesPage() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-gray-300 text-sm hover:border-indigo-500/50 disabled:opacity-60 transition-colors"
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-bold text-slate-200 transition hover:border-indigo-400/40 disabled:opacity-60"
               >
                 {uploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                  <Loader2 className="h-4 w-4 animate-spin text-indigo-300" />
                 ) : (
-                  <Upload className="w-4 h-4" />
+                  <Upload className="h-4 w-4" />
                 )}
                 {uploading ? 'Chargement...' : 'Charger une image'}
               </button>
               {imagePreview ? (
-                <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-white/10">
+                <div className="relative h-14 w-14 overflow-hidden rounded-xl border border-white/10">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+                  <img src={imagePreview} alt="preview" className="h-full w-full object-cover" />
                 </div>
               ) : (
-                <div className="w-14 h-14 rounded-xl border border-dashed border-white/10 flex items-center justify-center">
-                  <ImageIcon className="w-5 h-5 text-gray-600" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-dashed border-white/10">
+                  <ImageIcon className="h-5 w-5 text-slate-600" />
                 </div>
               )}
             </div>
 
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-              placeholder="Description *"
-              rows={4}
-              className="w-full px-3 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-white text-sm resize-none focus:border-indigo-500/50 focus:outline-none"
-            />
+            <label className="block">
+              <span className="mb-2 block text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Description *</span>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Description visible dans le catalogue"
+                rows={4}
+                className="w-full resize-none rounded-xl border border-white/10 bg-[#0a0f1c] px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-indigo-400/60 focus:ring-4 focus:ring-indigo-400/10"
+              />
+            </label>
 
             {form.sourceUrl && (
               <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -707,24 +1125,29 @@ export default function AdminArticlesPage() {
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-1">
+            </div>
+
+            <div className="shrink-0 border-t border-white/10 bg-[#111827]/95 p-4">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 onClick={resetModal}
-                className="px-4 py-2.5 rounded-xl bg-[#0a0f1c] border border-white/10 text-gray-300 text-sm hover:bg-white/5 transition-colors"
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-white/10 bg-[#0a0f1c] px-5 text-sm font-bold text-slate-300 transition hover:bg-white/5"
               >
                 Annuler
               </button>
               <button
                 onClick={onSave}
                 disabled={saving}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-60 transition-colors"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-500 px-5 text-sm font-black text-white transition hover:bg-indigo-400 disabled:opacity-60"
               >
-                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                {saving ? 'Enregistrement...' : editing ? 'Mettre a jour' : 'Creer'}
+                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                {saving ? 'Enregistrement...' : editing ? 'Mettre a jour' : "Creer l'article"}
               </button>
+              </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

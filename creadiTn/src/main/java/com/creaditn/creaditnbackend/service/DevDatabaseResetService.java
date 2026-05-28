@@ -47,7 +47,6 @@ public class DevDatabaseResetService {
             "user_wallet",
             "users",
             "articles",
-            "merchants",
             "messages"
     );
 

@@ -350,24 +350,6 @@ INSERT INTO `kyc_documents` (`id`, `admin_comment`, `cin_back_url`, `cin_front_u
 -- --------------------------------------------------------
 
 --
--- Structure de la table `merchants`
---
-
-CREATE TABLE `merchants` (
-  `id` bigint NOT NULL,
-  `active` bit(1) NOT NULL,
-  `address` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `category` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `created_at` datetime(6) DEFAULT NULL,
-  `email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `logo_url` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `phone` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
-
---
 -- Structure de la table `messages`
 --
 
@@ -533,6 +515,9 @@ CREATE TABLE `users` (
   `monthly_salary` double DEFAULT NULL,
   `number_of_children` int DEFAULT NULL,
   `password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password_reset_requested_at` datetime(6) DEFAULT NULL,
+  `password_reset_token_expiry` datetime(6) DEFAULT NULL,
+  `password_reset_token_hash` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `payment_score_modifier` int DEFAULT NULL,
   `phone` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `profession` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -555,10 +540,10 @@ CREATE TABLE `users` (
 -- Déchargement des données de la table `users`
 --
 
-INSERT INTO `users` (`id`, `address`, `autopay`, `created_at`, `email`, `first_name`, `kyc_failed_attempts`, `kyc_fraud_flag`, `kyc_provider`, `kyc_status`, `kyc_submitted_at`, `last_name`, `marital_status`, `monthly_salary`, `number_of_children`, `password_hash`, `payment_score_modifier`, `phone`, `profession`, `profile_photo_url`, `updated_at`, `account_deleted`, `email_verification_attempts`, `email_verification_otp`, `email_verification_otp_expiry`, `email_verification_sent_at`, `email_verified`, `email_verified_at`, `birth_date`, `gender`, `kyc_verified`, `kyc_verified_at`) VALUES
-(7, 'Hdjs', b'0', '2026-05-19 22:50:40.775232', 'rayenbesbes9@gmail.com', 'Rayen', 0, b'0', 'DIDIT', 'VERIFIED', '2026-05-19 23:56:10.595409', 'Hhe', NULL, 1500, 0, '$2a$10$8A1CaB3DKZ7uvsyr3khwXuRgp3S9mPN4LrRgc0Kj11INx1dESy5Ne', 30, '20409390', NULL, NULL, '2026-05-20 12:36:10.796615', b'0', 0, NULL, NULL, '2026-05-19 22:50:40.782629', b'1', '2026-05-19 22:51:02.529000', NULL, NULL, NULL, NULL),
-(9, NULL, b'1', '2026-05-19 23:10:57.868159', 'deleted_9_1779277908922@deleted.invalid', 'Deleted', 0, b'0', 'DIDIT', 'VERIFIED', '2026-05-20 00:13:20.263013', 'User', NULL, 3000, 0, '$2a$10$wDdaAXLY0uOoNVBSyvtKceUzbJlh6gjte9XzkJFd3IVLTiDcQLvV2', 10, NULL, NULL, NULL, '2026-05-20 11:51:48.982032', b'1', 0, NULL, NULL, '2026-05-19 23:10:57.888158', b'1', '2026-05-19 23:11:14.842434', NULL, NULL, NULL, NULL),
-(11, 'Bjj', b'0', '2026-05-20 11:52:49.726259', 'vdirassacoding@gmail.com', 'Raslen', 0, b'0', 'DIDIT', 'PENDING_MANUAL_REVIEW', '2026-05-20 12:44:43.680974', 'Hh', NULL, NULL, 0, '$2a$10$eG6aO0et2wyasfXNPUG8zOdyVDcXEA7wS7osP4LoQJkZzHCMkLk0y', 0, '20409390', NULL, NULL, '2026-05-20 12:44:43.681374', b'0', 0, NULL, NULL, '2026-05-20 12:41:17.325255', b'1', '2026-05-20 12:41:39.101959', NULL, NULL, NULL, NULL);
+INSERT INTO `users` (`id`, `address`, `autopay`, `created_at`, `email`, `first_name`, `kyc_failed_attempts`, `kyc_fraud_flag`, `kyc_provider`, `kyc_status`, `kyc_submitted_at`, `last_name`, `marital_status`, `monthly_salary`, `number_of_children`, `password_hash`, `password_reset_requested_at`, `password_reset_token_expiry`, `password_reset_token_hash`, `payment_score_modifier`, `phone`, `profession`, `profile_photo_url`, `updated_at`, `account_deleted`, `email_verification_attempts`, `email_verification_otp`, `email_verification_otp_expiry`, `email_verification_sent_at`, `email_verified`, `email_verified_at`, `birth_date`, `gender`, `kyc_verified`, `kyc_verified_at`) VALUES
+(7, 'Hdjs', b'0', '2026-05-19 22:50:40.775232', 'rayenbesbes9@gmail.com', 'Rayen', 0, b'0', 'DIDIT', 'VERIFIED', '2026-05-19 23:56:10.595409', 'Hhe', NULL, 1500, 0, '$2a$10$8A1CaB3DKZ7uvsyr3khwXuRgp3S9mPN4LrRgc0Kj11INx1dESy5Ne', NULL, NULL, NULL, 30, '20409390', NULL, NULL, '2026-05-20 12:36:10.796615', b'0', 0, NULL, NULL, '2026-05-19 22:50:40.782629', b'1', '2026-05-19 22:51:02.529000', NULL, NULL, NULL, NULL),
+(9, NULL, b'1', '2026-05-19 23:10:57.868159', 'deleted_9_1779277908922@deleted.invalid', 'Deleted', 0, b'0', 'DIDIT', 'VERIFIED', '2026-05-20 00:13:20.263013', 'User', NULL, 3000, 0, '$2a$10$wDdaAXLY0uOoNVBSyvtKceUzbJlh6gjte9XzkJFd3IVLTiDcQLvV2', NULL, NULL, NULL, 10, NULL, NULL, NULL, '2026-05-20 11:51:48.982032', b'1', 0, NULL, NULL, '2026-05-19 23:10:57.888158', b'1', '2026-05-19 23:11:14.842434', NULL, NULL, NULL, NULL),
+(11, 'Bjj', b'0', '2026-05-20 11:52:49.726259', 'vdirassacoding@gmail.com', 'Raslen', 0, b'0', 'DIDIT', 'PENDING_MANUAL_REVIEW', '2026-05-20 12:44:43.680974', 'Hh', NULL, NULL, 0, '$2a$10$eG6aO0et2wyasfXNPUG8zOdyVDcXEA7wS7osP4LoQJkZzHCMkLk0y', NULL, NULL, NULL, 0, '20409390', NULL, NULL, '2026-05-20 12:44:43.681374', b'0', 0, NULL, NULL, '2026-05-20 12:41:17.325255', b'1', '2026-05-20 12:41:39.101959', NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -662,12 +647,6 @@ ALTER TABLE `kyc_documents`
   ADD KEY `FKllb8bcbbyo994afdepf7f7j63` (`user_id`);
 
 --
--- Index pour la table `merchants`
---
-ALTER TABLE `merchants`
-  ADD PRIMARY KEY (`id`);
-
---
 -- Index pour la table `messages`
 --
 ALTER TABLE `messages`
@@ -711,7 +690,8 @@ ALTER TABLE `transactions`
 --
 ALTER TABLE `users`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `UK6dotkott2kjsp8vw4d0m25fb7` (`email`);
+  ADD UNIQUE KEY `UK6dotkott2kjsp8vw4d0m25fb7` (`email`),
+  ADD KEY `idx_users_password_reset_token_hash` (`password_reset_token_hash`);
 
 --
 -- Index pour la table `user_wallet`
@@ -783,12 +763,6 @@ ALTER TABLE `kyc_audit_logs`
 --
 ALTER TABLE `kyc_documents`
   MODIFY `id` bigint NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
-
---
--- AUTO_INCREMENT pour la table `merchants`
---
-ALTER TABLE `merchants`
-  MODIFY `id` bigint NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT pour la table `messages`

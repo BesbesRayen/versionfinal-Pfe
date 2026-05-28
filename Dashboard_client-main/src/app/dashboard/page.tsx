@@ -11,6 +11,7 @@ import {
   Star, Sparkles, Activity, Send, FileText, Download,
 } from 'lucide-react';
 import MobileAccessModal from '@/components/MobileAccessModal';
+import QRDownloadCard from '@/components/QRDownloadCard';
 import { useSocket } from '@/lib/useSocket';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8082';
@@ -69,6 +70,15 @@ interface PaymentReceipt {
   status?: string;
   installmentNumber?: number;
   automaticPayment?: boolean;
+}
+
+interface CreditPlan {
+  months: number;
+  label: string;
+  feePercent: number;
+  feeLabel: string;
+  description: string;
+  recommended: boolean;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -183,6 +193,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [credits, setCredits] = useState<CreditInfo[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
+  const [creditPlans, setCreditPlans] = useState<CreditPlan[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,13 +220,14 @@ export default function DashboardPage() {
 
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     const uidParam = userId ? `?userId=${userId}` : '';
-    const [userRes, dashRes, creditsRes, installRes, notifRes, receiptsRes] = await Promise.allSettled([
+    const [userRes, dashRes, creditsRes, installRes, notifRes, receiptsRes, plansRes] = await Promise.allSettled([
       fetch(`${API_BASE}/api/users/profile${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/dashboard${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/credits/my${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/credits/my-installments${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/notifications${uidParam}`, { headers }),
       fetch(`${API_BASE}/api/payments/receipts${uidParam}`, { headers }),
+      fetch(`${API_BASE}/api/credit-plans`),
     ]);
 
     // If all calls return 401, token is stale — force re-login
@@ -225,7 +237,7 @@ export default function DashboardPage() {
     if (allUnauthorized) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.replace('/login');
       return;
     }
 
@@ -245,6 +257,11 @@ export default function DashboardPage() {
         creditLimit: data.totalLimit ?? prev.creditLimit,
         walletBalance: data.availableCredit ?? prev.walletBalance,
       } : prev);
+    }
+
+    if (plansRes.status === 'fulfilled' && plansRes.value.ok) {
+      const data = await plansRes.value.json();
+      setCreditPlans(Array.isArray(data) ? data : []);
     }
 
     // Credits/purchases — map monthlyAmount → monthlyInstallment
@@ -286,22 +303,58 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    const storedToken = localStorage.getItem('token');
-    if (!storedUser || !storedToken) { window.location.href = '/login'; return; }
-    // Validate JWT format (header.payload.signature) — reject fake/legacy tokens immediately
-    const isValidJwt = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(storedToken);
-    if (!isValidJwt) {
+    const redirectToLogin = () => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      window.location.href = '/login';
+      window.location.replace('/login');
+    };
+
+    const verifyClientSession = () => {
+      const storedUser = localStorage.getItem('user');
+      const storedToken = localStorage.getItem('token');
+      if (!storedUser || !storedToken) {
+        redirectToLogin();
+        return;
+      }
+
+      // Validate JWT format (header.payload.signature) — reject fake/legacy tokens immediately
+      const isValidJwt = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(storedToken);
+      if (!isValidJwt) {
+        redirectToLogin();
+        return;
+      }
+
+      try {
+        setUser(JSON.parse(storedUser));
+        tokenRef.current = storedToken;
+      } catch {
+        redirectToLogin();
+      }
+    };
+
+    verifyClientSession();
+
+    const handlePageShow = () => verifyClientSession();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'user' || event.key === 'token') {
+        verifyClientSession();
+      }
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    window.addEventListener('storage', handleStorage);
+
+    const storedToken = localStorage.getItem('token');
+    if (!storedToken) {
       return;
     }
-    try {
-      setUser(JSON.parse(storedUser));
-      tokenRef.current = storedToken;
-    } catch { window.location.href = '/login'; return; }
+
     fetchUserData(storedToken).finally(() => setLoading(false));
+
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, [fetchUserData]);
 
   useEffect(() => {
@@ -729,13 +782,12 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { months: 3,  label: '3 mois',  rate: 'Gratuit',       sublabel: '0% de frais',     tag: 'Gratuit',    tagClass: 'bg-emerald-500/20 text-emerald-300', cardClass: 'bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/15', valueClass: 'text-emerald-400', recommended: true },
-              { months: 6,  label: '6 mois',  rate: '+3% total',     sublabel: 'sur le montant',  tag: 'Populaire',  tagClass: 'bg-indigo-500/20 text-indigo-300',   cardClass: 'bg-white/5 border-white/10 hover:bg-white/10',                   valueClass: 'text-indigo-300',  recommended: false },
-              { months: 9,  label: '9 mois',  rate: '+6% total',     sublabel: 'sur le montant',  tag: 'Flex',       tagClass: 'bg-amber-500/20 text-amber-300',     cardClass: 'bg-white/5 border-white/10 hover:bg-white/10',                   valueClass: 'text-amber-300',   recommended: false },
-              { months: 12, label: '12 mois', rate: '+12% total',    sublabel: 'sur le montant',  tag: 'Long terme', tagClass: 'bg-violet-500/20 text-violet-300',   cardClass: 'bg-white/5 border-white/10 hover:bg-white/10',                   valueClass: 'text-violet-300',  recommended: false },
-            ].map((plan) => (
-              <div key={plan.months} className={`relative p-5 rounded-2xl border transition-all cursor-pointer hover:-translate-y-0.5 ${plan.cardClass}`}>
+            {creditPlans.map((plan) => (
+              <div key={plan.months} className={`relative p-5 rounded-2xl border transition-all cursor-pointer hover:-translate-y-0.5 ${
+                plan.recommended
+                  ? 'bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/15'
+                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+              }`}>
                 {plan.recommended && (
                   <div className="absolute -top-2 left-4">
                     <span className="bg-emerald-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full">
@@ -748,12 +800,14 @@ export default function DashboardPage() {
                     <span className="text-3xl font-black text-white">{plan.months}</span>
                     <span className="text-sm text-gray-400 font-semibold ml-1">mois</span>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${plan.tagClass}`}>
-                    {plan.tag}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    plan.recommended ? 'bg-emerald-500/20 text-emerald-300' : 'bg-indigo-500/20 text-indigo-300'
+                  }`}>
+                    {plan.description}
                   </span>
                 </div>
-                <p className={`text-sm font-black ${plan.valueClass}`}>{plan.rate}</p>
-                <p className="text-xs text-gray-600 mt-1">{plan.sublabel}</p>
+                <p className={`text-sm font-black ${plan.recommended ? 'text-emerald-400' : 'text-indigo-300'}`}>{plan.feeLabel}</p>
+                <p className="text-xs text-gray-600 mt-1">frais CreditTN</p>
               </div>
             ))}
           </div>
@@ -762,33 +816,27 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        {/* App download CTA */}
-        <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 p-6 text-white shadow-2xl shadow-indigo-950/30 animate-fadeIn sm:p-8">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        {/* App download QR */}
+        <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#0B1020] p-5 text-white shadow-2xl shadow-black/30 animate-fadeIn sm:p-8">
+          <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-r from-pink-500/20 via-violet-500/20 to-cyan-400/20" />
+          <div className="relative grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Smartphone className="w-4 h-4 text-indigo-200" />
-                <span className="text-indigo-200 text-xs font-bold uppercase tracking-wider">Application Mobile</span>
+              <div className="flex items-center gap-2 mb-3">
+                <Smartphone className="w-4 h-4 text-cyan-200" />
+                <span className="text-cyan-200 text-xs font-bold uppercase tracking-wider">Application Mobile</span>
               </div>
-              <h3 className="text-xl font-black">Tout gerer depuis l&apos;app</h3>
-              <p className="text-indigo-200 text-sm mt-1.5 max-w-md leading-relaxed">
-                Paiements, score credit, verification KYC, notifications — tout en temps reel.
+              <h3 className="text-2xl font-black">Tout gerer depuis l&apos;app</h3>
+              <p className="text-slate-300 text-sm mt-2 max-w-md leading-relaxed">
+                Paiements, score credit, verification KYC et notifications en temps reel depuis CreditTN mobile.
               </p>
-              <div className="flex items-center gap-3 mt-4">
+              <div className="flex items-center gap-3 mt-5">
                 {[0, 1, 2, 3, 4].map((i) => (
                   <Star key={i} className="w-4 h-4 text-amber-300 fill-amber-300" />
                 ))}
-                <span className="text-xs text-indigo-200 font-semibold">4.8 / 5</span>
+                <span className="text-xs text-slate-400 font-semibold">4.8 / 5</span>
               </div>
             </div>
-            <button
-              onClick={() => openMobileAccess('download', 'Telecharger CreditTN')}
-              className="flex items-center gap-2.5 px-6 py-3.5 bg-white text-indigo-700 font-bold rounded-2xl hover:bg-indigo-50 transition-colors flex-shrink-0 shadow-lg text-sm"
-            >
-              <Smartphone className="w-4 h-4" />
-              Acceder a l&apos;application mobile
-            </button>
+            <QRDownloadCard deepLink="creditn://download" source="dashboard-qr" />
           </div>
         </div>
       </div>

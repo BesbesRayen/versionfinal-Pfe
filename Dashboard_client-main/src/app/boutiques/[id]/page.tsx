@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -12,6 +13,7 @@ import {
   ExternalLink,
   Globe2,
   Heart,
+  Loader2,
   MapPin,
   ShieldCheck,
   ShoppingBag,
@@ -20,10 +22,24 @@ import {
   Store,
   Zap,
 } from 'lucide-react';
-import { boutiques } from '@/data/boutiques';
+import { BACKEND, CreditPlan, PublicArticle, PublicStore, getCreditPlans, getPublicStore, getPublicStoreArticles } from '@/lib/api';
 
 function domain(url: string) {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((item) => item[0]?.toUpperCase())
+    .join('');
+}
+
+function imageSrc(src: string) {
+  if (!src) return '';
+  return src.startsWith('/') ? `${BACKEND}${src}` : src;
 }
 
 function PlanCard({ months, fee, note, featured = false }: { months: string; fee: string; note: string; featured?: boolean }) {
@@ -44,21 +60,65 @@ function PlanCard({ months, fee, note, featured = false }: { months: string; fee
   );
 }
 
+function eligibilityText(article: PublicArticle) {
+  const months = [
+    article.eligibleThreeMonths !== false ? '3' : null,
+    article.eligibleSixMonths !== false ? '6' : null,
+    article.eligibleTwelveMonths !== false ? '12' : null,
+  ].filter(Boolean);
+
+  return months.length > 0 ? `Eligible CreditTN ${months.join(', ')} mois` : 'Eligibilite a verifier';
+}
+
 export default function BoutiqueDetailPage() {
   const params = useParams();
-  const id = Number(params.id);
-  const boutique = boutiques.find((item) => item.id === id);
+  const id = String(params.id ?? '');
+  const [storeItem, setStoreItem] = useState<PublicStore | null>(null);
+  const [articles, setArticles] = useState<PublicArticle[]>([]);
+  const [plans, setPlans] = useState<CreditPlan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  if (!boutique) {
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      setError('');
+      try {
+        const [storeData, articleData, planData] = await Promise.all([
+          getPublicStore(id),
+          getPublicStoreArticles(id),
+          getCreditPlans(),
+        ]);
+        setStoreItem(storeData);
+        setArticles(articleData);
+        setPlans(planData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Boutique introuvable.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void load();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#070A12] px-4 pt-16 text-white">
+        <Loader2 className="mr-3 h-6 w-6 animate-spin text-cyan-200" />
+        Chargement de la boutique...
+      </div>
+    );
+  }
+
+  if (error || !storeItem) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#070A12] px-4 pt-16 text-white">
         <div className="max-w-md rounded-[24px] border border-[#26324A] bg-[#111827] p-8 text-center">
           <Store className="mx-auto h-10 w-10 text-slate-500" />
           <h1 className="mt-4 text-2xl font-black">Boutique introuvable</h1>
-          <Link
-            href="/boutiques"
-            className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#6D5DFB] px-5 py-3 text-sm font-black text-white"
-          >
+          <p className="mt-2 text-sm text-slate-400">{error}</p>
+          <Link href="/boutiques" className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#6D5DFB] px-5 py-3 text-sm font-black text-white">
             <ArrowLeft className="h-4 w-4" />
             Retour aux boutiques
           </Link>
@@ -82,63 +142,55 @@ export default function BoutiqueDetailPage() {
 
         <section className="overflow-hidden rounded-[24px] border border-[#26324A] bg-[#0B1020]/95 shadow-2xl shadow-black/20">
           <div className="relative p-5 sm:p-8">
-            <div
-              className="absolute right-0 top-0 h-52 w-52 rounded-full blur-3xl"
-              style={{ backgroundColor: `${boutique.accent}24` }}
-            />
+            <div className="absolute right-0 top-0 h-52 w-52 rounded-full bg-cyan-400/10 blur-3xl" />
 
             <div className="relative grid gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
               <div>
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-                  <div
-                    className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[24px] border border-white/10 text-2xl font-black text-white shadow-2xl"
-                    style={{
-                      background: `linear-gradient(135deg, ${boutique.accent}, #151B2E 78%)`,
-                      boxShadow: `0 24px 60px ${boutique.accent}22`,
-                    }}
-                  >
-                    {boutique.logo}
+                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[24px] border border-white/10 bg-gradient-to-br from-cyan-400 to-indigo-600 text-2xl font-black text-white shadow-2xl shadow-cyan-950/30">
+                    {storeItem.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imageSrc(storeItem.logoUrl)} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      initials(storeItem.name)
+                    )}
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap gap-2">
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-[#6D5DFB]/30 bg-[#6D5DFB]/15 px-3 py-1.5 text-xs font-black text-indigo-200">
                         <Sparkles className="h-3.5 w-3.5" />
-                        {boutique.checkoutLabel}
+                        CreditTN checkout
                       </span>
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black ${
-                          boutique.isLocal
-                            ? 'border-[#19C37D]/25 bg-[#19C37D]/10 text-[#19C37D]'
-                            : 'border-violet-300/25 bg-violet-300/10 text-violet-200'
-                        }`}
-                      >
-                        {boutique.isLocal ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Globe2 className="h-3.5 w-3.5" />}
-                        {boutique.isLocal ? 'Partenaire local' : 'International'}
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#19C37D]/25 bg-[#19C37D]/10 px-3 py-1.5 text-xs font-black text-[#19C37D]">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Catalogue actif
                       </span>
                     </div>
 
-                    <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">{boutique.name}</h1>
-                    <p className="mt-3 max-w-2xl text-base leading-7 text-slate-400">{boutique.longDescription}</p>
+                    <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">{storeItem.name}</h1>
+                    <p className="mt-3 max-w-2xl text-base leading-7 text-slate-400">
+                      Retrouvez les articles CreditTN disponibles dans cette boutique, synchronises depuis le dashboard admin.
+                    </p>
 
                     <div className="mt-5 flex flex-wrap gap-3 text-sm font-semibold text-slate-400">
                       <span className="inline-flex items-center gap-2 rounded-full border border-[#26324A] bg-[#111827] px-3 py-2">
                         <Store className="h-4 w-4 text-[#19C37D]" />
-                        {boutique.categoryLabel}
+                        {storeItem.category}
                       </span>
                       <span className="inline-flex items-center gap-2 rounded-full border border-[#26324A] bg-[#111827] px-3 py-2">
                         <MapPin className="h-4 w-4 text-[#19C37D]" />
-                        {boutique.city}, {boutique.country}
+                        {storeItem.country}
                       </span>
                       <span className="inline-flex items-center gap-2 rounded-full border border-[#26324A] bg-[#111827] px-3 py-2">
                         <Building2 className="h-4 w-4 text-[#19C37D]" />
-                        {boutique.locations > 0 ? `${boutique.locations} points de vente` : 'Marketplace externe'}
+                        {storeItem.articleCount} articles
                       </span>
                     </div>
 
                     <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                       <a
-                        href={boutique.website}
+                        href={storeItem.websiteUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center justify-center gap-2 rounded-[20px] bg-[#6D5DFB] px-6 py-4 text-sm font-black text-white shadow-lg shadow-[#6D5DFB]/20 transition-colors hover:bg-[#7C6DFF]"
@@ -167,18 +219,21 @@ export default function BoutiqueDetailPage() {
                 </div>
 
                 <div className="mt-5 grid gap-2">
-                  <PlanCard months="3 mois" fee="0%" note="sans frais" featured />
-                  <PlanCard months="6 mois" fee="+3%" note="sur le montant total" />
-                  <PlanCard months="9 mois" fee="+6%" note="plan intermediaire" />
-                  <PlanCard months="12 mois" fee="+12%" note="long terme" />
+                  {plans.map((plan) => (
+                    <PlanCard
+                      key={plan.months}
+                      months={plan.label}
+                      fee={plan.feeLabel}
+                      note={plan.description}
+                      featured={plan.recommended}
+                    />
+                  ))}
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-[#26324A] bg-[#151B2E] p-4">
                   <div className="flex items-start gap-3">
                     <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#19C37D]" />
-                    <p className="text-sm leading-6 text-slate-400">
-                      Conditions transparentes affichees avant validation du paiement.
-                    </p>
+                    <p className="text-sm leading-6 text-slate-400">Conditions transparentes affichees avant validation du paiement.</p>
                   </div>
                 </div>
               </aside>
@@ -194,7 +249,7 @@ export default function BoutiqueDetailPage() {
                 <h2 className="mt-1 text-2xl font-black text-white">Produits populaires</h2>
               </div>
               <a
-                href={boutique.website}
+                href={storeItem.websiteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hidden items-center gap-2 text-sm font-black text-indigo-200 transition-colors hover:text-white sm:inline-flex"
@@ -205,25 +260,27 @@ export default function BoutiqueDetailPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {boutique.products.map((product) => (
+              {articles.map((product) => (
                 <article
-                  key={product.name}
+                  key={product.id}
                   className="group rounded-[24px] border border-[#26324A] bg-[#111827]/90 p-5 shadow-xl shadow-black/10 transition-all hover:-translate-y-1 hover:border-[#6D5DFB]/60 hover:shadow-[#6D5DFB]/10"
                 >
-                  <div
-                    className="flex h-28 items-center justify-center rounded-[20px] border border-white/10 text-3xl font-black text-white"
-                    style={{ background: `linear-gradient(135deg, ${boutique.accent}55, #151B2E)` }}
-                  >
-                    {product.tag}
+                  <div className="flex h-36 items-center justify-center overflow-hidden rounded-[20px] border border-white/10 bg-[#151B2E] text-3xl font-black text-white">
+                    {product.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imageSrc(product.imageUrl)} alt={product.productName} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
+                    ) : (
+                      product.category.slice(0, 2).toUpperCase()
+                    )}
                   </div>
                   <div className="mt-5">
-                    <p className="text-xs font-black uppercase tracking-wide text-[#19C37D]">{product.tag}</p>
-                    <h3 className="mt-1 min-h-[48px] text-base font-black leading-6 text-white">{product.name}</h3>
-                    <p className="mt-3 text-2xl font-black text-white">{product.price}</p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">Eligible CreditTN 3 a 12 mois</p>
+                    <p className="text-xs font-black uppercase tracking-wide text-[#19C37D]">{product.category}</p>
+                    <h3 className="mt-1 min-h-[48px] text-base font-black leading-6 text-white">{product.productName}</h3>
+                    <p className="mt-3 text-2xl font-black text-white">{Math.round(product.price)} TND</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{eligibilityText(product)}</p>
                   </div>
                   <a
-                    href={boutique.website}
+                    href={product.sourceUrl || storeItem.websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#151B2E] px-4 py-3 text-sm font-black text-slate-200 transition-colors hover:bg-[#6D5DFB] hover:text-white"
@@ -234,6 +291,14 @@ export default function BoutiqueDetailPage() {
                 </article>
               ))}
             </div>
+
+            {articles.length === 0 && (
+              <div className="rounded-[24px] border border-[#26324A] bg-[#111827] p-10 text-center">
+                <ShoppingBag className="mx-auto h-10 w-10 text-slate-500" />
+                <h3 className="mt-4 text-xl font-black text-white">Aucun article publie</h3>
+                <p className="mt-2 text-sm text-slate-400">Les articles ajoutes par l&apos;admin apparaitront ici automatiquement.</p>
+              </div>
+            )}
           </div>
 
           <aside className="space-y-4">
@@ -241,9 +306,9 @@ export default function BoutiqueDetailPage() {
               <h3 className="text-lg font-black text-white">Informations</h3>
               <div className="mt-4 space-y-3">
                 {[
-                  { label: 'Site web', value: domain(boutique.website), icon: Globe2 },
-                  { label: 'Localisation', value: `${boutique.city}, ${boutique.country}`, icon: MapPin },
-                  { label: 'Depuis', value: boutique.founded, icon: Clock },
+                  { label: 'Site web', value: domain(storeItem.websiteUrl), icon: Globe2 },
+                  { label: 'Localisation', value: storeItem.country, icon: MapPin },
+                  { label: 'Mis a jour', value: storeItem.updatedAt ? new Date(storeItem.updatedAt).toLocaleDateString('fr-TN') : 'Catalogue live', icon: Clock },
                 ].map((item) => (
                   <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-[#26324A] bg-[#151B2E] p-3">
                     <item.icon className="mt-0.5 h-4 w-4 shrink-0 text-[#19C37D]" />

@@ -137,14 +137,15 @@ function ProductReelCard({
   onBuy: () => void;
 }) {
   const categoryMark = CATEGORY_MARK[product.category] ?? 'PR';
-  const hasImage = product.imageUrl && product.imageUrl.startsWith('http');
+  const imageUrl = product.imageUrl?.startsWith('/') ? `${API_BASE}${product.imageUrl}` : product.imageUrl;
+  const hasImage = Boolean(imageUrl);
 
   return (
     <div className="group shrink-0 w-52 snap-start flex flex-col bg-slate-900/80 border border-white/10 rounded-2xl overflow-hidden hover:border-cyan-300/40 hover:shadow-xl hover:shadow-cyan-950/20 transition-all duration-300 hover:-translate-y-1 cursor-pointer">
       <div className="relative h-40 bg-slate-950 flex items-center justify-center overflow-hidden">
         {hasImage ? (
           <Image
-            src={product.imageUrl}
+            src={imageUrl || ''}
             alt={product.productName}
             fill
             sizes="208px"

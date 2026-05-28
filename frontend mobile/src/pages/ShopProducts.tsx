@@ -102,7 +102,7 @@ const ShopProducts = () => {
         <View style={styles.grid}>
           {articles.map((article) => (
             <ArticleCard
-              key={article.id}
+              key={`article-${article.shopId}-${article.id}`}
               article={article}
               width={itemWidth}
               featured={hasSingleArticle}

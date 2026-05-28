@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
@@ -14,16 +14,15 @@ import BottomNav from "@/components/BottomNav";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { useCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth";
-import { checkoutArticlePurchase, API_BASE_URL } from "@/lib/api";
+import { checkoutArticlePurchase, API_BASE_URL, CreditPlan, getCreditPlans } from "@/lib/api";
 import { colors, radii } from "@/lib/theme";
 import { getLocalCreditMath, toDt } from "@/lib/creditPreview";
 
-const INSTALLMENT_PLANS = [
-  { months: 0,  label: "Paiement comptant", interest: 0 },
-  { months: 3,  label: "3 mois",            interest: 0 },
-  { months: 6,  label: "6 mois",            interest: 3 },
-  { months: 9,  label: "9 mois",            interest: 6 },
-  { months: 12, label: "12 mois",           interest: 12 },
+const DEFAULT_CREDIT_PLANS: CreditPlan[] = [
+  { months: 3, label: "3 mois", feePercent: 0, feeLabel: "0%", description: "sans frais", recommended: true },
+  { months: 6, label: "6 mois", feePercent: 3, feeLabel: "+3%", description: "populaire", recommended: false },
+  { months: 9, label: "9 mois", feePercent: 6, feeLabel: "+6%", description: "intermediaire", recommended: false },
+  { months: 12, label: "12 mois", feePercent: 12, feeLabel: "+12%", description: "long terme", recommended: false },
 ];
 
 const resolveImageUrl = (url: string) => {
@@ -37,10 +36,16 @@ const Cart = () => {
   const { items, totalPrice, removeItem, updateQuantity, clearCart } = useCart();
   const { user } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState(0);
+  const [creditPlans, setCreditPlans] = useState<CreditPlan[]>(DEFAULT_CREDIT_PLANS);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const selectedPlanData = INSTALLMENT_PLANS.find((p) => p.months === selectedPlan) ?? INSTALLMENT_PLANS[0];
+  useEffect(() => {
+    getCreditPlans().then(setCreditPlans).catch(() => setCreditPlans(DEFAULT_CREDIT_PLANS));
+  }, []);
+
+  const paymentPlans = [{ months: 0, label: "Paiement comptant", feePercent: 0, feeLabel: "", description: "", recommended: false }, ...creditPlans];
+  const selectedPlanData = paymentPlans.find((p) => p.months === selectedPlan) ?? paymentPlans[0];
   const creditMath = selectedPlan > 0 ? getLocalCreditMath(totalPrice, selectedPlan) : null;
   const monthlyAmount = creditMath?.monthly ?? 0;
 
@@ -119,7 +124,7 @@ const Cart = () => {
             {/* Cart Items */}
             <View style={styles.itemsContainer}>
               {items.map((item) => (
-                <View key={item.id} style={styles.cartItem}>
+                <View key={`cart-${item.articleId}-${item.shopId}`} style={styles.cartItem}>
                   <Image
                     source={{ uri: resolveImageUrl(item.imageUrl) }}
                     style={styles.itemImage}
@@ -155,23 +160,23 @@ const Cart = () => {
             {/* Payment Plan Selector */}
             <Text style={styles.sectionTitle}>Mode de paiement</Text>
             <View style={styles.plansGrid}>
-              {INSTALLMENT_PLANS.map((plan) => {
+              {paymentPlans.map((plan) => {
                 const active = selectedPlan === plan.months;
                 return (
                   <Pressable
-                    key={plan.months}
+                    key={`payment-plan-${plan.months}-${plan.label}`}
                     onPress={() => setSelectedPlan(plan.months)}
                     style={[styles.planCard, active && styles.planCardActive]}
                   >
                     <Text style={[styles.planLabel, active && styles.planLabelActive]}>
                       {plan.label}
                     </Text>
-                    {plan.interest > 0 && (
+                    {plan.feePercent > 0 && (
                       <Text style={[styles.planInterest, active && styles.planInterestActive]}>
-                        +{plan.interest}%
+                        {plan.feeLabel}
                       </Text>
                     )}
-                    {plan.interest === 0 && plan.months > 0 && (
+                    {plan.feePercent === 0 && plan.months > 0 && (
                       <Text style={[styles.planFree, active && styles.planFreeActive]}>
                         0%
                       </Text>
@@ -198,7 +203,7 @@ const Cart = () => {
                   <Text style={styles.summaryValue}>{toDt(creditMath.principal)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Interet ({selectedPlanData.interest}%)</Text>
+                  <Text style={styles.summaryLabel}>Interet ({selectedPlanData.feePercent}%)</Text>
                   <Text style={[styles.summaryValue, { color: "#F59E0B" }]}>
                     +{toDt(creditMath.interest)}
                   </Text>

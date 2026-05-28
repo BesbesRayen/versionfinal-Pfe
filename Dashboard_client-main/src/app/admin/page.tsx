@@ -75,6 +75,7 @@ export default function AdminDashboard() {
     { label: 'Demandes Crédit', value: stats?.totalCredits ?? 0, icon: CreditCard, color: 'from-emerald-500 to-emerald-700', bg: 'bg-emerald-500/10' },
     { label: 'Échéances', value: stats?.totalInstallments ?? 0, icon: CalendarClock, color: 'from-amber-500 to-amber-700', bg: 'bg-amber-500/10' },
     { label: 'KYC en attente', value: stats?.pendingKyc ?? 0, icon: ShieldCheck, color: 'from-rose-500 to-rose-700', bg: 'bg-rose-500/10' },
+    { label: 'Boutiques', value: stats?.totalStores ?? 0, icon: ShoppingBag, color: 'from-teal-500 to-teal-700', bg: 'bg-teal-500/10' },
     { label: 'Articles actifs', value: stats?.totalArticles ?? 0, icon: Package, color: 'from-cyan-500 to-cyan-700', bg: 'bg-cyan-500/10' },
     { label: 'Factures', value: stats?.totalInvoices ?? 0, icon: FileText, color: 'from-fuchsia-500 to-fuchsia-700', bg: 'bg-fuchsia-500/10' },
     { label: 'Alertes crédit', value: stats?.unreadCreditNotifications ?? 0, icon: Bell, color: 'from-orange-500 to-orange-700', bg: 'bg-orange-500/10' },

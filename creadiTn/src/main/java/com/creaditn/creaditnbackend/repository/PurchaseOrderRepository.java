@@ -16,4 +16,6 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
     long countByPaymentType(PurchasePaymentType paymentType);
 
     long countByStatus(PurchaseOrderStatus status);
+
+    boolean existsByArticleId(Long articleId);
 }

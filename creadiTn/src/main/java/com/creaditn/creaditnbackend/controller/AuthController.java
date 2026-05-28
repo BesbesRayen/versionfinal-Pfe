@@ -39,6 +39,11 @@ public class AuthController {
         return ResponseEntity.ok(authService.confirmPasswordReset(request));
     }
 
+    @PostMapping("/forgot-password/validate")
+    public ResponseEntity<ApiResponse> validateForgotPassword(@Valid @RequestBody ForgotPasswordValidateRequest request) {
+        return ResponseEntity.ok(authService.validatePasswordReset(request));
+    }
+
     @PostMapping("/forgot-email")
     public ResponseEntity<ApiResponse> forgotEmail(@Valid @RequestBody ForgotEmailRequest request) {
         return ResponseEntity.ok(authService.recoverEmail(request));

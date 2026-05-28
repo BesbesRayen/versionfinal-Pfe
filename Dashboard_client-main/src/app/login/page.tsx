@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { CreditCard, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
@@ -12,6 +12,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
+  }, []);
 
   // Show success banner if coming from registration
   const isRegistered = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('registered') === '1';
@@ -33,7 +40,7 @@ export default function LoginPage() {
         const adminData = await adminRes.json();
         localStorage.setItem('adminToken', adminData.token || 'admin-session');
         localStorage.setItem('adminUser', JSON.stringify({ name: adminData.name || 'Admin', email: adminData.email }));
-        window.location.href = '/admin';
+        window.location.replace('/admin');
         return;
       }
 
@@ -58,7 +65,7 @@ export default function LoginPage() {
           firstName: data.firstName,
           lastName: data.lastName,
         }));
-        window.location.href = '/dashboard';
+        window.location.replace('/dashboard');
       }
     } catch {
       setError('Erreur réseau. Veuillez réessayer.');
@@ -176,9 +183,9 @@ export default function LoginPage() {
                 <label htmlFor="password" className="block text-sm font-medium text-gray-300">
                   Mot de passe
                 </label>
-                <a href="#" className="text-sm text-indigo-400 hover:text-indigo-400 font-medium">
+                <Link href="/forgot-password" className="text-sm text-indigo-400 hover:text-indigo-400 font-medium">
                   Mot de passe oublié ?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />

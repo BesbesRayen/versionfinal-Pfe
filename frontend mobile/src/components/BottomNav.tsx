@@ -4,11 +4,11 @@ import { AppRoute, useAppNavigation } from "@/lib/app-navigation";
 import { colors, radii } from "@/lib/theme";
 
 const tabs = [
-  { route: "Home" as AppRoute, icon: "home-outline", label: "Accueil" },
-  { route: "Shops" as AppRoute, icon: "store-outline", label: "Boutiques" },
-  { route: "Credit" as AppRoute, icon: "credit-card-outline", label: "Credit" },
-  { route: "Installments" as AppRoute, icon: "receipt-text-outline", label: "Paiements" },
-  { route: "Profile" as AppRoute, icon: "account-outline", label: "Profil" },
+  { route: "Home" as AppRoute, icon: "view-dashboard-outline", label: "Home" },
+  { route: "Shops" as AppRoute, icon: "shopping-outline", label: "Shop" },
+  { route: "Credit" as AppRoute, icon: "star-four-points-outline", label: "Credit" },
+  { route: "Installments" as AppRoute, icon: "chart-timeline-variant", label: "Pay" },
+  { route: "Profile" as AppRoute, icon: "account-circle-outline", label: "Me" },
 ];
 
 const BottomNav = () => {
@@ -21,12 +21,13 @@ const BottomNav = () => {
           const isActive = route === tab.route;
 
           return (
-            <Pressable key={tab.route} onPress={() => navigate(tab.route)} style={[styles.tabButton, isActive && styles.tabButtonActive]}>
+            <Pressable key={tab.route} onPress={() => navigate(tab.route)} style={styles.tabButton}>
+              {isActive && <View style={styles.activeGlow} />}
               <View style={[styles.iconBox, isActive && styles.iconBoxActive]}>
                 <MaterialCommunityIcons
                   name={tab.icon as keyof typeof MaterialCommunityIcons.glyphMap}
-                  size={18}
-                  color={isActive ? colors.white : colors.mutedForeground}
+                  size={20}
+                  color={isActive ? colors.white : "#7D88A8"}
                 />
               </View>
               <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
@@ -41,60 +42,66 @@ const BottomNav = () => {
 const styles = StyleSheet.create({
   wrapper: {
     position: "absolute",
-    bottom: 0,
+    bottom: 8,
     left: 0,
     right: 0,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
   },
   bar: {
     flexDirection: "row",
-    justifyContent: "space-around",
     alignItems: "center",
     backgroundColor: colors.navGlass,
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 30,
-    padding: 7,
+    borderColor: "rgba(255, 255, 255, 0.13)",
+    borderRadius: 34,
+    paddingHorizontal: 8,
+    paddingVertical: 9,
     shadowColor: colors.shadow,
-    shadowOpacity: 0.42,
-    shadowRadius: 28,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 12,
+    shadowOpacity: 0.6,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 18 },
+    elevation: 18,
   },
   tabButton: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 6,
-    borderRadius: 24,
+    paddingVertical: 3,
+    borderRadius: 28,
     flex: 1,
-  },
-  tabButtonActive: {
-    backgroundColor: colors.primarySoft,
+    position: "relative",
   },
   iconBox: {
-    width: 32,
-    height: 32,
+    width: 38,
+    height: 38,
     borderRadius: radii.full,
     alignItems: "center",
     justifyContent: "center",
   },
   iconBoxActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: "#8B5CF6",
     shadowColor: colors.ring,
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 9 },
+    shadowOpacity: 0.58,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  activeGlow: {
+    position: "absolute",
+    top: 4,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(139, 92, 246, 0.20)",
   },
   label: {
-    marginTop: 2,
+    marginTop: 3,
     fontFamily: "Inter",
-    fontSize: 9,
-    color: colors.mutedForeground,
-    fontWeight: "700",
+    fontSize: 10,
+    color: "#7D88A8",
+    fontWeight: "800",
   },
   labelActive: {
-    color: colors.primary,
+    color: "#E8DDFF",
   },
 });
 

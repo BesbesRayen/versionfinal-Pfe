@@ -8,8 +8,24 @@ async function proxy(req: NextRequest, params: { path: string[] }) {
   const url = `${getBackendUrl()}/api${backendPath}${search}`;
 
   const headers = new Headers();
+  const ignoredHeaders = new Set([
+    'host',
+    'connection',
+    'content-length',
+    'expect',
+    'origin',
+    'access-control-request-headers',
+    'access-control-request-method',
+    'keep-alive',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'te',
+    'trailer',
+    'transfer-encoding',
+    'upgrade',
+  ]);
   req.headers.forEach((value, key) => {
-    if (!['host', 'connection'].includes(key.toLowerCase())) {
+    if (!ignoredHeaders.has(key.toLowerCase())) {
       headers.set(key, value);
     }
   });

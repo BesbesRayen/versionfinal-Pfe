@@ -19,6 +19,30 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CreadiScoreService {
 
+    private static final int TOTAL_SCORE_MAX = 1000;
+    private static final int KYC_SCORE_MAX = 300;
+    private static final int SALARY_SCORE_MAX = 387;
+    private static final int BEHAVIOR_SCORE_MAX = 287;
+    private static final int REMOVED_HOUSEHOLD_SCORE = 0;
+
+    private static final double SALARY_CAP = 15_000.0;
+
+    private static final int BEHAVIOR_BASE = 100;
+    private static final int FAST_KYC_BONUS = 50;
+    private static final int NORMAL_KYC_BONUS = 32;
+    private static final int SLOW_KYC_BONUS = 15;
+    private static final int REJECTED_KYC_PENALTY = 50;
+    private static final int CLEAN_FRAUD_BONUS = 50;
+    private static final int FRAUD_FLAG_PENALTY = 95;
+    private static final int FAILED_KYC_ATTEMPT_PENALTY = 24;
+    private static final int FAILED_KYC_ATTEMPT_PENALTY_MAX = 75;
+    private static final int PAYMENT_MODIFIER_MIN = -110;
+    private static final int PAYMENT_MODIFIER_MAX = 110;
+    private static final int OVERDUE_INSTALLMENT_PENALTY = 28;
+    private static final int OVERDUE_INSTALLMENT_PENALTY_MAX = 85;
+    private static final int PENDING_INSTALLMENT_BONUS = 4;
+    private static final int PENDING_INSTALLMENT_BONUS_MAX = 25;
+
     private final UserRepository userRepository;
     private final CreadiScoreRepository creadiScoreRepository;
     private final InstallmentRepository installmentRepository;
@@ -30,16 +54,16 @@ public class CreadiScoreService {
 
         int kycScore = computeKycScore(user);
         int salaryScore = computeSalaryScore(user);
-        int maritalScore = computeMaritalScore(user);
-        int childrenScore = computeChildrenScore(user);
+        int maritalScore = REMOVED_HOUSEHOLD_SCORE;
+        int childrenScore = REMOVED_HOUSEHOLD_SCORE;
         int behaviorScore = computeBehaviorScore(user);
 
-        int totalScore = clamp(kycScore + salaryScore + maritalScore + childrenScore + behaviorScore, 0, 1000);
+        int totalScore = calculateTotalScore(kycScore, salaryScore, behaviorScore);
         ScoreLevel level = determineLevel(totalScore);
         RiskLevel risk = determineRisk(totalScore);
         String reason = generateReason(user, kycScore, salaryScore, behaviorScore, totalScore);
         String behaviorAnalysis = generateBehaviorAnalysis(user, behaviorScore, totalScore);
-        List<String> scoreFactors = generateScoreFactors(user, kycScore, salaryScore, maritalScore, childrenScore, behaviorScore);
+        List<String> scoreFactors = generateScoreFactors(user, kycScore, salaryScore, behaviorScore);
         String badge = determineBadge(totalScore);
         double maxCreditLimit = computeCreditLimit(totalScore, user);
         List<String> tips = generateImprovementTips(user, kycScore, salaryScore, behaviorScore);
@@ -74,15 +98,15 @@ public class CreadiScoreService {
         User user = cs.getUser();
         int kycScore = nullToZero(cs.getKycScore());
         int salaryScore = nullToZero(cs.getSalaryScore());
-        int maritalScore = nullToZero(cs.getMaritalScore());
-        int childrenScore = nullToZero(cs.getChildrenScore());
+        int maritalScore = REMOVED_HOUSEHOLD_SCORE;
+        int childrenScore = REMOVED_HOUSEHOLD_SCORE;
         int behaviorScore = nullToZero(cs.getBehaviorScore());
         int totalScore = nullToZero(cs.getTotalScore());
 
         return buildResponse(userId, user, totalScore, cs.getLevel(), cs.getRisk(), cs.getReason(), kycScore,
                 salaryScore, maritalScore, childrenScore, behaviorScore,
                 generateBehaviorAnalysis(user, behaviorScore, totalScore),
-                generateScoreFactors(user, kycScore, salaryScore, maritalScore, childrenScore, behaviorScore),
+                generateScoreFactors(user, kycScore, salaryScore, behaviorScore),
                 cs.getBadge(), computeCreditLimit(totalScore, user),
                 generateImprovementTips(user, kycScore, salaryScore, behaviorScore), cs.getCreatedAt());
     }
@@ -128,9 +152,10 @@ public class CreadiScoreService {
     }
 
     private int computeKycScore(User user) {
+        // KYC remains capped at 300; pending provider states get no trust until there is a verified or manual-review signal.
         if (user.getKycStatus() != KycStatus.VERIFIED) {
             if (user.getKycStatus() == KycStatus.PENDING_MANUAL_REVIEW) return 90;
-            if (user.getKycStatus() == KycStatus.PENDING || user.getKycStatus() == KycStatus.PROVIDER_FAILED) return 40;
+            if (user.getKycStatus() == KycStatus.PENDING || user.getKycStatus() == KycStatus.PROVIDER_FAILED) return 0;
             return 0;
         }
 
@@ -146,60 +171,40 @@ public class CreadiScoreService {
         if (document.getFraudRiskScore() != null) {
             score -= Math.min(70, document.getFraudRiskScore());
         }
-        return clamp(score, 0, 300);
+        return clamp(score, 0, KYC_SCORE_MAX);
     }
 
     private int computeSalaryScore(User user) {
+        // Salary now carries the removed household points and keeps signal up to 15,000 instead of flattening at 5,000.
         Double salary = user.getMonthlySalary();
         if (salary == null || salary <= 0) return 0;
-        double cappedSalary = Math.min(salary, 5000.0);
-        return clamp((int) Math.round(40 + 260 * Math.sqrt(cappedSalary / 5000.0)), 40, 300);
-    }
-
-    private int computeMaritalScore(User user) {
-        String status = normalize(user.getMaritalStatus());
-        if (status.isBlank()) return 35;
-        return switch (status) {
-            case "MARRIED", "MARIE", "MARIEE" -> 88;
-            case "SINGLE", "CELIBATAIRE" -> 62;
-            case "DIVORCED", "DIVORCE", "DIVORCEE" -> 55;
-            case "WIDOWED", "VEUF", "VEUVE" -> 68;
-            default -> 45;
-        };
-    }
-
-    private int computeChildrenScore(User user) {
-        Integer children = user.getNumberOfChildren();
-        if (children == null) return 25;
-        if (children <= 0) return 86;
-        if (children == 1) return 72;
-        if (children == 2) return 58;
-        if (children == 3) return 44;
-        return 30;
+        double cappedSalary = Math.min(salary, SALARY_CAP);
+        return clamp((int) Math.round(SALARY_SCORE_MAX * Math.sqrt(cappedSalary / SALARY_CAP)), 0, SALARY_SCORE_MAX);
     }
 
     private int computeBehaviorScore(User user) {
-        int score = 70;
+        // Behavior absorbs the other half of the removed household points, rewarding repayment and clean risk signals more heavily.
+        int score = BEHAVIOR_BASE;
 
         if (user.getKycStatus() == KycStatus.VERIFIED && user.getKycSubmittedAt() != null && user.getCreatedAt() != null) {
             long hoursToComplete = Duration.between(user.getCreatedAt(), user.getKycSubmittedAt()).toHours();
-            if (hoursToComplete <= 48) score += 35;
-            else if (hoursToComplete <= 168) score += 22;
-            else score += 10;
+            if (hoursToComplete <= 48) score += FAST_KYC_BONUS;
+            else if (hoursToComplete <= 168) score += NORMAL_KYC_BONUS;
+            else score += SLOW_KYC_BONUS;
         } else if (user.getKycStatus() == KycStatus.REJECTED) {
-            score -= 35;
+            score -= REJECTED_KYC_PENALTY;
         }
 
-        if (Boolean.FALSE.equals(user.getKycFraudFlag())) score += 35;
-        else if (Boolean.TRUE.equals(user.getKycFraudFlag())) score -= 70;
+        if (Boolean.FALSE.equals(user.getKycFraudFlag())) score += CLEAN_FRAUD_BONUS;
+        else if (Boolean.TRUE.equals(user.getKycFraudFlag())) score -= FRAUD_FLAG_PENALTY;
 
         Integer failedAttempts = user.getKycFailedAttempts();
         if (failedAttempts != null && failedAttempts > 0) {
-            score -= Math.min(55, failedAttempts * 18);
+            score -= Math.min(FAILED_KYC_ATTEMPT_PENALTY_MAX, failedAttempts * FAILED_KYC_ATTEMPT_PENALTY);
         }
 
         int paymentModifier = user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier();
-        score += clamp(paymentModifier, -80, 80);
+        score += clamp(paymentModifier, PAYMENT_MODIFIER_MIN, PAYMENT_MODIFIER_MAX);
 
         long overdueCount = installmentRepository
                 .findByCreditRequestUserIdAndStatus(user.getId(), InstallmentStatus.OVERDUE)
@@ -207,10 +212,12 @@ public class CreadiScoreService {
         long pendingCount = installmentRepository
                 .findByCreditRequestUserIdAndStatus(user.getId(), InstallmentStatus.PENDING)
                 .size();
-        if (overdueCount > 0) score -= Math.min(60, overdueCount * 20);
-        if (pendingCount > 0 && overdueCount == 0) score += Math.min(15, pendingCount * 3);
+        if (overdueCount > 0) score -= Math.min(OVERDUE_INSTALLMENT_PENALTY_MAX, overdueCount * OVERDUE_INSTALLMENT_PENALTY);
+        if (pendingCount > 0 && overdueCount == 0) {
+            score += Math.min(PENDING_INSTALLMENT_BONUS_MAX, pendingCount * PENDING_INSTALLMENT_BONUS);
+        }
 
-        return clamp(score, 0, 200);
+        return clamp(score, 0, BEHAVIOR_SCORE_MAX);
     }
 
     private ScoreLevel determineLevel(int score) {
@@ -235,12 +242,12 @@ public class CreadiScoreService {
         else if (kycScore > 0) negatives.add("identity needs stronger verification evidence");
         else negatives.add("identity not yet verified");
 
-        if (salaryScore >= 240) positives.add("stable salary");
+        if (salaryScore >= 310) positives.add("strong salary capacity");
         else if (salaryScore > 0) positives.add("salary information provided");
         else negatives.add("no salary information provided");
 
-        if (behaviorScore >= 150) positives.add("reliable account behavior");
-        else if (behaviorScore < 80) negatives.add("behavior risk signals");
+        if (behaviorScore >= 220) positives.add("reliable account behavior");
+        else if (behaviorScore < 100) negatives.add("behavior risk signals");
 
         if (Boolean.FALSE.equals(user.getKycFraudFlag())) positives.add("clean fraud record");
         else if (Boolean.TRUE.equals(user.getKycFraudFlag())) negatives.add("fraud flag detected on account");
@@ -262,24 +269,23 @@ public class CreadiScoreService {
             return "High-risk profile: verification history contains fraud or identity-risk signals.";
         }
         int failedAttempts = user.getKycFailedAttempts() == null ? 0 : user.getKycFailedAttempts();
-        if (failedAttempts >= 3 || behaviorScore < 70) {
+        if (failedAttempts >= 3 || behaviorScore < 100) {
             return "Sensitive profile: repeated verification or payment-risk signals reduce trust.";
         }
-        if (totalScore >= 800 && behaviorScore >= 150) {
+        if (totalScore >= 800 && behaviorScore >= 220) {
             return "Reliable planner: strong verification, clean history, and consistent financial signals.";
         }
-        if (behaviorScore >= 120) {
+        if (behaviorScore >= 170) {
             return "Responsible profile: behavior is healthy, with room to strengthen financial data.";
         }
         return "Developing profile: complete missing information and keep payments on time to improve trust.";
     }
 
-    private List<String> generateScoreFactors(User user, int kycScore, int salaryScore, int maritalScore, int childrenScore, int behaviorScore) {
+    private List<String> generateScoreFactors(User user, int kycScore, int salaryScore, int behaviorScore) {
         List<String> factors = new ArrayList<>();
-        factors.add("KYC identity evidence: " + kycScore + "/300");
-        factors.add("Salary strength: " + salaryScore + "/300");
-        factors.add("Household profile: " + (maritalScore + childrenScore) + "/200");
-        factors.add("Behavior and repayment signals: " + behaviorScore + "/200");
+        factors.add("KYC identity evidence: " + kycScore + "/" + KYC_SCORE_MAX);
+        factors.add("Salary strength: " + salaryScore + "/" + SALARY_SCORE_MAX);
+        factors.add("Behavior and repayment signals: " + behaviorScore + "/" + BEHAVIOR_SCORE_MAX);
         if (user.getKycFailedAttempts() != null && user.getKycFailedAttempts() > 0) {
             factors.add("Failed KYC attempts: " + user.getKycFailedAttempts());
         }
@@ -294,13 +300,16 @@ public class CreadiScoreService {
     }
 
     private double computeCreditLimit(int score, User user) {
-        return computeCreditLimitFromUser(user);
+        // Credit capacity is still based on affordability, then scaled by the final score so low scores cannot receive the full limit.
+        double rawLimit = computeCreditLimitFromUser(user);
+        double scoreMultiplier = clamp(score, 0, TOTAL_SCORE_MAX) / (double) TOTAL_SCORE_MAX;
+        return Math.round(rawLimit * scoreMultiplier / 10.0) * 10.0;
     }
 
     public double computeCreditLimitForUser(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        return computeCreditLimitFromUser(user);
+        return computeCreditLimit(calculateTotalScore(user), user);
     }
 
     private double computeCreditLimitFromUser(User user) {
@@ -345,12 +354,8 @@ public class CreadiScoreService {
     private List<String> generateImprovementTips(User user, int kycScore, int salaryScore, int behaviorScore) {
         List<String> tips = new ArrayList<>();
         if (kycScore < 260) tips.add("Complete a strong selfie and ID verification to gain more KYC points");
-        if (salaryScore < 240) tips.add("Update your salary information to improve your score");
-        if (behaviorScore < 150) tips.add("Maintain a clean record with no failed verification attempts");
-        if (user.getMaritalStatus() == null || user.getMaritalStatus().isBlank()
-                || user.getNumberOfChildren() == null) {
-            tips.add("Complete your profile for better score");
-        }
+        if (salaryScore < 310) tips.add("Update your salary information to improve your score");
+        if (behaviorScore < 220) tips.add("Maintain a clean record with no failed verification attempts and on-time payments");
         if (tips.isEmpty()) tips.add("Great job! Maintain your current standing to keep your excellent score");
         return tips;
     }
@@ -371,6 +376,14 @@ public class CreadiScoreService {
         if (value == null) return 0;
         double normalized = value > 1.0 ? value / 100.0 : value;
         return clamp((int) Math.round(normalized * maxPoints), 0, maxPoints);
+    }
+
+    private int calculateTotalScore(User user) {
+        return calculateTotalScore(computeKycScore(user), computeSalaryScore(user), computeBehaviorScore(user));
+    }
+
+    private int calculateTotalScore(int kycScore, int salaryScore, int behaviorScore) {
+        return clamp(kycScore + salaryScore + behaviorScore, 0, TOTAL_SCORE_MAX);
     }
 
     private int clamp(int value, int min, int max) {

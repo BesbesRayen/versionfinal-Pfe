@@ -346,7 +346,7 @@ const Home = () => {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
               {popularArticles.map((article) => (
                 <Pressable
-                  key={article.id}
+                  key={`popular-${article.id}-${article.boutiqueName}`}
                   style={styles.popularCard}
                   onPress={() => navigate("Credit", { prefillAmount: article.price, productName: article.productName })}
                 >

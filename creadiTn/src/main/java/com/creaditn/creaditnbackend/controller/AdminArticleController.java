@@ -35,9 +35,11 @@ public class AdminArticleController {
     public ResponseEntity<List<ArticleResponse>> getArticles(
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String boutiqueName,
-            @RequestParam(required = false) String search
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) Long storeId
     ) {
-        return ResponseEntity.ok(articleService.getAdminArticles(category, boutiqueName, search));
+        return ResponseEntity.ok(articleService.getAdminArticles(category, boutiqueName, search, active, storeId));
     }
 
     @PostMapping
@@ -57,6 +59,23 @@ public class AdminArticleController {
     public ResponseEntity<ApiResponse> deleteArticle(@PathVariable Long id) {
         articleService.deleteArticle(id);
         return ResponseEntity.ok(ApiResponse.success("Article deleted"));
+    }
+
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ArticleResponse> updateStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, Boolean> payload
+    ) {
+        return ResponseEntity.ok(articleService.updateArticleStatus(id, Boolean.TRUE.equals(payload.get("active"))));
+    }
+
+    @PatchMapping("/{id}/publish")
+    public ResponseEntity<ArticleResponse> updatePublishStatus(
+            @PathVariable Long id,
+            @RequestBody Map<String, Boolean> payload
+    ) {
+        Boolean active = payload.containsKey("published") ? payload.get("published") : payload.get("active");
+        return ResponseEntity.ok(articleService.updateArticleStatus(id, Boolean.TRUE.equals(active)));
     }
 
     /**
