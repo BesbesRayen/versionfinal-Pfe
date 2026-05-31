@@ -423,6 +423,10 @@ const sanitizeApiErrorMessage = (rawMessage: string, status: number) => {
     return message;
   }
 
+  if (/unexpected error|try again later|internal server error/i.test(message)) {
+    return "Certaines informations sont temporairement indisponibles.";
+  }
+
   if (/user not found|not found with id|compte introuvable|database|sql|exception|stack|trace|java\.|hibernate|constraint|request failed with status|\/api\/|id\s*\d+/i.test(message)) {
     if (status === 401 || status === 403) {
       return "Session expiree. Veuillez vous reconnecter.";

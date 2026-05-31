@@ -2,15 +2,30 @@ package com.creaditn.creaditnbackend.repository;
 
 import com.creaditn.creaditnbackend.entity.KycDocument;
 import com.creaditn.creaditnbackend.entity.KycStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 
 public interface KycDocumentRepository extends JpaRepository<KycDocument, Long> {
+    @EntityGraph(attributePaths = "user")
     List<KycDocument> findByUserId(Long userId);
+
+    @EntityGraph(attributePaths = "user")
     Optional<KycDocument> findTopByUserIdOrderByCreatedAtDesc(Long userId);
+
+    @EntityGraph(attributePaths = "user")
     List<KycDocument> findByStatus(KycStatus status);
+
+    @EntityGraph(attributePaths = "user")
     List<KycDocument> findByStatusInOrderByCreatedAtDesc(List<KycStatus> statuses);
+
+    @Override
+    @EntityGraph(attributePaths = "user")
+    Page<KycDocument> findAll(Pageable pageable);
+
     long countByStatus(KycStatus status);
 
     /**

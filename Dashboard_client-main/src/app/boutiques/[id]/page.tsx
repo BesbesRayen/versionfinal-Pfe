@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import MobileAccessModal from '@/components/MobileAccessModal';
 import {
   ArrowLeft,
   ArrowRight,
@@ -78,6 +79,11 @@ export default function BoutiqueDetailPage() {
   const [plans, setPlans] = useState<CreditPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [mobileModal, setMobileModal] = useState<{ open: boolean; link: string; name: string }>({
+    open: false,
+    link: '',
+    name: '',
+  });
 
   useEffect(() => {
     async function load() {
@@ -126,6 +132,18 @@ export default function BoutiqueDetailPage() {
       </div>
     );
   }
+
+  const openProductInApp = (product: PublicArticle) => {
+    const params = new URLSearchParams({
+      articleId: String(product.id),
+      shopName: storeItem.name,
+    });
+    setMobileModal({
+      open: true,
+      link: `creditn://product?${params.toString()}`,
+      name: product.productName,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[#070A12] pt-16 text-white">
@@ -279,15 +297,25 @@ export default function BoutiqueDetailPage() {
                     <p className="mt-3 text-2xl font-black text-white">{Math.round(product.price)} TND</p>
                     <p className="mt-1 text-xs font-semibold text-slate-500">{eligibilityText(product)}</p>
                   </div>
-                  <a
-                    href={product.sourceUrl || storeItem.websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#151B2E] px-4 py-3 text-sm font-black text-slate-200 transition-colors hover:bg-[#6D5DFB] hover:text-white"
-                  >
-                    Voir produit
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
+                  <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                    <a
+                      href={product.sourceUrl || storeItem.websiteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#151B2E] px-3 py-3 text-center text-sm font-black text-slate-200 transition-colors hover:bg-[#6D5DFB] hover:text-white"
+                    >
+                      Voir produit
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => openProductInApp(product)}
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#6D5DFB] px-3 py-3 text-center text-sm font-black text-white shadow-lg shadow-[#6D5DFB]/15 transition-colors hover:bg-[#7C6DFF]"
+                    >
+                      Ouvrir app
+                      <ShoppingBag className="h-4 w-4" />
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
@@ -341,6 +369,13 @@ export default function BoutiqueDetailPage() {
           </aside>
         </section>
       </main>
+
+      <MobileAccessModal
+        isOpen={mobileModal.open}
+        onClose={() => setMobileModal((state) => ({ ...state, open: false }))}
+        deepLink={mobileModal.link}
+        title={mobileModal.name}
+      />
     </div>
   );
 }

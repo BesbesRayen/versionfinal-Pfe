@@ -34,7 +34,9 @@ public class AdminAuthFilter extends OncePerRequestFilter {
 
         // Only apply to admin paths and protected KYC evidence files.
         boolean adminPath = path.startsWith("/api/admin/") && !path.equals("/api/admin/login");
-        boolean kycEvidencePath = path.startsWith("/api/files/kyc/");
+        boolean kycEvidencePath = path.startsWith("/api/files/kyc/")
+                || path.startsWith("/api/uploads/kyc/")
+                || path.startsWith("/uploads/kyc/");
         if (!adminPath && !kycEvidencePath) {
             filterChain.doFilter(request, response);
             return;

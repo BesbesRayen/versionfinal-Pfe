@@ -56,26 +56,31 @@ public class InstallmentService {
         installmentRepository.saveAll(installments);
     }
 
+    @Transactional(readOnly = true)
     public List<InstallmentDto> getInstallmentsForCredit(Long creditRequestId) {
         return installmentRepository.findByCreditRequestId(creditRequestId)
                 .stream().map(this::mapToDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<InstallmentDto> getAllInstallments() {
         return installmentRepository.findAll()
                 .stream().map(this::mapToDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<InstallmentDto> getUserInstallments(Long userId) {
         return installmentRepository.findByCreditRequestUserId(userId)
                 .stream().map(this::mapToDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<InstallmentDto> getUserPendingInstallments(Long userId) {
         return installmentRepository.findByCreditRequestUserIdAndStatus(userId, InstallmentStatus.PENDING)
                 .stream().map(this::mapToDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public Installment getInstallmentEntity(Long id) {
         return installmentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Installment not found with id: " + id));
@@ -88,6 +93,7 @@ public class InstallmentService {
         installmentRepository.save(installment);
     }
 
+    @Transactional(readOnly = true)
     public List<Installment> getUserUnpaidInstallments(Long userId) {
         List<Installment> pending = installmentRepository
                 .findByCreditRequestUserIdAndStatus(userId, InstallmentStatus.PENDING);

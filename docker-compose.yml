@@ -1,7 +1,6 @@
 services:
   db:
     image: mysql:8.0
-    container_name: creaditn-db
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpass}
@@ -23,7 +22,6 @@ services:
     build:
       context: ./creadiTn
       dockerfile: Dockerfile
-    container_name: creaditn-backend
     restart: unless-stopped
     env_file:
       - .env
@@ -59,6 +57,7 @@ services:
       APP_CREDIT_MAX_PER_USER: ${APP_CREDIT_MAX_PER_USER:-2000}
       APP_DEV_RESET_ENABLED: ${APP_DEV_RESET_ENABLED:-false}
       APP_DEV_RESET_TOKEN: ${APP_DEV_RESET_TOKEN:-}
+      APP_ERRORS_INCLUDE_DETAILS: ${APP_ERRORS_INCLUDE_DETAILS:-false}
     volumes:
       - uploads_data:/app/uploads
     healthcheck:
@@ -69,7 +68,6 @@ services:
 
   phpmyadmin:
     image: phpmyadmin:5.2
-    container_name: creaditn-phpmyadmin
     restart: unless-stopped
     depends_on:
       db:
@@ -81,12 +79,12 @@ services:
       PMA_PORT: 3306
       PMA_USER: ${DB_USER:-creaditn}
       PMA_PASSWORD: ${DB_PASSWORD:-creaditnpass}
+      PMA_ABSOLUTE_URI: ${PHPMYADMIN_ABSOLUTE_URI:-http://localhost:8081/}
 
   socket-server:
     build:
       context: ./socket-server
       dockerfile: Dockerfile
-    container_name: creaditn-socket
     restart: unless-stopped
     ports:
       - "3001:3001"
@@ -104,7 +102,6 @@ services:
     build:
       context: ./Dashboard_client-main
       dockerfile: Dockerfile
-    container_name: creaditn-dashboard
     restart: unless-stopped
     depends_on:
       - backend
@@ -118,6 +115,20 @@ services:
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-only-secret-change-me}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+  mobile-web:
+    build:
+      context: "./frontend mobile"
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - socket-server
+    ports:
+      - "8083:8083"
+    environment:
+      EXPO_PUBLIC_API_BASE_URL: http://localhost:8082
+      EXPO_PUBLIC_SOCKET_URL: http://localhost:3001
 
 volumes:
   mysql_data:

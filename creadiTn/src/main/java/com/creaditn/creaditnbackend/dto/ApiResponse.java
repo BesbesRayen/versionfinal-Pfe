@@ -21,4 +21,8 @@ public class ApiResponse {
     public static ApiResponse error(String message) {
         return ApiResponse.builder().success(false).message(message).build();
     }
+
+    public static ApiResponse error(String message, Object data) {
+        return ApiResponse.builder().success(false).message(message).data(data).build();
+    }
 }

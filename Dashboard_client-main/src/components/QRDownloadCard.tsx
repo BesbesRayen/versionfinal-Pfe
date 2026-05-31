@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-  Apple,
   CheckCircle2,
   Download,
   ExternalLink,
@@ -76,18 +75,6 @@ export default function QRDownloadCard({ deepLink = mobileDownloadConfig.default
       href: getExpoGoUrl(deepLink),
       icon: Terminal,
       tone: 'hover:border-cyan-300/50 hover:bg-cyan-300/10 focus-visible:ring-cyan-300/60',
-    },
-    {
-      label: 'Telecharger APK Android',
-      href: mobileDownloadConfig.androidApkUrl,
-      icon: Download,
-      tone: 'hover:border-pink-300/50 hover:bg-pink-300/10 focus-visible:ring-pink-300/60',
-    },
-    {
-      label: 'App Store',
-      href: mobileDownloadConfig.iosAppStoreUrl,
-      icon: Apple,
-      tone: 'hover:border-white/30 hover:bg-white/10 focus-visible:ring-white/50',
     },
     {
       label: 'Google Play',

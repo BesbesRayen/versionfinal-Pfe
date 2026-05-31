@@ -104,11 +104,13 @@ public class PaymentService {
         return mapToDto(payment);
     }
 
+    @Transactional(readOnly = true)
     public List<PaymentDto> getUserPayments(Long userId) {
         return paymentRepository.findByUserIdOrderByPaidAtDesc(userId)
                 .stream().map(this::mapToDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public List<PaymentDto> getUserReceipts(Long userId) {
         return getUserPayments(userId);
     }
@@ -209,6 +211,7 @@ public class PaymentService {
             .build();
     }
 
+    @Transactional(readOnly = true)
     public PaymentDto getPaymentByReference(String reference) {
         Payment payment = paymentRepository.findByTransactionReference(reference)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));

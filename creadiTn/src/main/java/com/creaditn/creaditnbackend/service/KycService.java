@@ -180,6 +180,7 @@ public class KycService {
         return mapToDto(doc);
     }
 
+    @Transactional(readOnly = true)
     public List<KycDocumentDto> getPendingDocuments() {
         return kycDocumentRepository.findByStatusInOrderByCreatedAtDesc(List.of(
                         KycStatus.PENDING_MANUAL_REVIEW,
@@ -189,12 +190,14 @@ public class KycService {
                 .stream().map(this::mapToDto).toList();
     }
 
+    @Transactional(readOnly = true)
     public KycDocumentDto getReview(Long documentId) {
         return kycDocumentRepository.findById(documentId)
                 .map(this::mapToDtoWithAudit)
                 .orElseThrow(() -> new ResourceNotFoundException("KYC document not found"));
     }
 
+    @Transactional(readOnly = true)
     public Optional<KycDocumentDto> getLatestKycOptional(Long userId) {
         return kycDocumentRepository.findTopByUserIdOrderByCreatedAtDesc(userId)
                 .map(this::mapToDto);

@@ -85,8 +85,8 @@ const Home = () => {
           await processDueAutopayments(user.userId).catch(() => null);
         }
         const [installmentData, paymentData, scoreData, unreadData, kycData, profileData, balanceData, popularData] = await Promise.all([
-          getMyInstallments(user.userId),
-          getMyPayments(user.userId),
+          getMyInstallments(user.userId).catch(() => [] as Installment[]),
+          getMyPayments(user.userId).catch(() => [] as Payment[]),
           getCreadiScoreLatest(user.userId).catch(() => null),
           getUnreadNotificationCount(user.userId).catch(() => 0),
           getKycStatus(user.userId).catch(() => null),

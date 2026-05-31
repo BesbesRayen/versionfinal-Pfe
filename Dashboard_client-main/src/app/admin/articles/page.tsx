@@ -139,6 +139,25 @@ function cleanImportedText(value?: string) {
   return text;
 }
 
+function cleanArticleCategory(value?: string | null, fallback?: string | null) {
+  const raw = (value || fallback || '').trim();
+  if (!raw) return '';
+
+  const parts = raw
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+chevron_right\s+/gi, '>')
+    .split(/>|\/|»|›|\|/g)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !/^(accueil|home)$/i.test(part));
+
+  const candidate = (parts[parts.length - 1] || raw)
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return candidate.slice(0, 100);
+}
+
 function displayImportedPrice(value?: string) {
   const price = parseImportedPrice(value);
   return price > 0 ? String(price) : value;
@@ -484,7 +503,7 @@ export default function AdminArticlesPage() {
           productName: fallback.name || prev.productName,
           storeId: prev.storeId || resolvedStore?.id,
           boutiqueName: prev.storeId ? prev.boutiqueName : resolvedStore?.name || fallback.brand || prev.boutiqueName,
-          category: prev.category || resolvedStore?.category || '',
+          category: cleanArticleCategory(prev.category, resolvedStore?.category),
           sourceUrl: importUrl.trim(),
         }));
         setImportWarning(
@@ -515,7 +534,7 @@ export default function AdminArticlesPage() {
         imageUrl: result.images?.[0] ?? prev.imageUrl,
         storeId: prev.storeId || resolvedStore?.id,
         boutiqueName: prev.storeId ? prev.boutiqueName : resolvedStore?.name || result.brand || prev.boutiqueName,
-        category: result.category || prev.category || resolvedStore?.category || '',
+        category: cleanArticleCategory(result.category, prev.category || resolvedStore?.category),
         sourceUrl: result.sourceUrl || importUrl.trim(),
       }));
 
@@ -565,7 +584,9 @@ export default function AdminArticlesPage() {
       return;
     }
 
-    if (!form.productName.trim() || !form.description.trim() || !form.imageUrl.trim() || !form.category.trim()) {
+    const category = cleanArticleCategory(form.category, selectedFormStore.category);
+
+    if (!form.productName.trim() || !form.description.trim() || !form.imageUrl.trim() || !category) {
       setError('Veuillez remplir tous les champs obligatoires.');
       return;
     }
@@ -583,7 +604,7 @@ export default function AdminArticlesPage() {
         ...form,
         storeId: selectedFormStore.id,
         boutiqueName: selectedFormStore.name,
-        category: form.category || selectedFormStore.category,
+        category,
       };
 
       if (editing) {

@@ -9,6 +9,7 @@ import com.creaditn.creaditnbackend.repository.KycDocumentRepository;
 import com.creaditn.creaditnbackend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.text.Normalizer;
 import java.time.Duration;
@@ -40,8 +41,8 @@ public class CreadiScoreService {
     private static final int PAYMENT_MODIFIER_MAX = 110;
     private static final int OVERDUE_INSTALLMENT_PENALTY = 28;
     private static final int OVERDUE_INSTALLMENT_PENALTY_MAX = 85;
-    private static final int PENDING_INSTALLMENT_BONUS = 4;
-    private static final int PENDING_INSTALLMENT_BONUS_MAX = 25;
+    private static final int PAID_INSTALLMENT_BONUS = 4;
+    private static final int PAID_INSTALLMENT_BONUS_MAX = 25;
 
     private final UserRepository userRepository;
     private final CreadiScoreRepository creadiScoreRepository;
@@ -89,6 +90,7 @@ public class CreadiScoreService {
                 maxCreditLimit, tips, entity.getCreatedAt());
     }
 
+    @Transactional(readOnly = true)
     public CreadiScoreResponse getLatestScore(Long userId) {
         CreadiScore cs = creadiScoreRepository.findTopByUserIdOrderByCreatedAtDesc(userId).orElse(null);
         if (cs == null) {
@@ -209,12 +211,12 @@ public class CreadiScoreService {
         long overdueCount = installmentRepository
                 .findByCreditRequestUserIdAndStatus(user.getId(), InstallmentStatus.OVERDUE)
                 .size();
-        long pendingCount = installmentRepository
-                .findByCreditRequestUserIdAndStatus(user.getId(), InstallmentStatus.PENDING)
+        long paidCount = installmentRepository
+                .findByCreditRequestUserIdAndStatus(user.getId(), InstallmentStatus.PAID)
                 .size();
         if (overdueCount > 0) score -= Math.min(OVERDUE_INSTALLMENT_PENALTY_MAX, overdueCount * OVERDUE_INSTALLMENT_PENALTY);
-        if (pendingCount > 0 && overdueCount == 0) {
-            score += Math.min(PENDING_INSTALLMENT_BONUS_MAX, pendingCount * PENDING_INSTALLMENT_BONUS);
+        if (paidCount > 0 && overdueCount == 0) {
+            score += Math.min(PAID_INSTALLMENT_BONUS_MAX, paidCount * PAID_INSTALLMENT_BONUS);
         }
 
         return clamp(score, 0, BEHAVIOR_SCORE_MAX);
@@ -339,12 +341,14 @@ public class CreadiScoreService {
         long overdueCount = installmentRepository
                 .findByCreditRequestUserIdAndStatus(user.getId(), InstallmentStatus.OVERDUE)
                 .size();
-        long pendingCount = installmentRepository
-                .findByCreditRequestUserIdAndStatus(user.getId(), InstallmentStatus.PENDING)
-                .size();
 
-        if (overdueCount > 0 && pendingCount > 0) {
-            paymentFactor -= Math.min(0.25, overdueCount / (double) (pendingCount + overdueCount));
+        if (overdueCount > 0) {
+            long activeCount = installmentRepository
+                    .findByCreditRequestUserId(user.getId())
+                    .stream()
+                    .filter(installment -> installment.getStatus() != InstallmentStatus.PAID)
+                    .count();
+            paymentFactor -= Math.min(0.25, overdueCount / (double) Math.max(1, activeCount));
         }
 
         baseCredit = baseCredit * Math.max(0.6, paymentFactor);

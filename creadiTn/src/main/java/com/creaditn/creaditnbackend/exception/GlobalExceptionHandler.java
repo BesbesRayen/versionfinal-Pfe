@@ -1,8 +1,10 @@
 package com.creaditn.creaditnbackend.exception;
 
 import com.creaditn.creaditnbackend.dto.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -23,6 +25,9 @@ import java.util.Map;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @Value("${app.errors.include-details:false}")
+    private boolean includeErrorDetails;
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse> handleResourceNotFound(ResourceNotFoundException ex) {
@@ -55,7 +60,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ApiResponse> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach(error -> {
             String fieldName = error instanceof FieldError fieldError
@@ -64,7 +69,12 @@ public class GlobalExceptionHandler {
             String message = error.getDefaultMessage();
             errors.put(fieldName, message);
         });
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errors);
+        String message = errors.entrySet().stream()
+                .findFirst()
+                .map(entry -> entry.getKey() + ": " + entry.getValue())
+                .orElse("Invalid request");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(message, errors));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -107,10 +117,17 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse> handleGeneral(Exception ex) {
-        log.error("Unexpected error occurred", ex);
-        // Never expose internal exception messages or stack traces to the client
+    public ResponseEntity<ApiResponse> handleGeneral(Exception ex, HttpServletRequest request) {
+        log.error("Unexpected error occurred while handling {} {}", request.getMethod(), request.getRequestURI(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("An unexpected error occurred. Please try again later."));
+                .body(ApiResponse.error(
+                        "An unexpected error occurred. Please try again later.",
+                        includeErrorDetails ? Map.of(
+                                "exception", ex.getClass().getName(),
+                                "message", ex.getMessage() != null ? ex.getMessage() : "",
+                                "path", request.getRequestURI(),
+                                "method", request.getMethod()
+                        ) : null
+                ));
     }
 }

@@ -1,6 +1,7 @@
 package com.creaditn.creaditnbackend.service;
 
 import com.creaditn.creaditnbackend.entity.KycStatus;
+import com.creaditn.creaditnbackend.entity.InstallmentStatus;
 import com.creaditn.creaditnbackend.entity.User;
 import com.creaditn.creaditnbackend.repository.CreadiScoreRepository;
 import com.creaditn.creaditnbackend.repository.InstallmentRepository;
@@ -35,7 +36,7 @@ class CreadiScoreServiceTest {
     private KycDocumentRepository kycDocumentRepository;
 
     @Test
-    void calculateScoreClampsBehaviorAndPenalizesUnknownDependents() {
+    void calculateScoreClampsBehaviorAndDoesNotUseHouseholdScores() {
         User user = User.builder()
                 .id(9L)
                 .createdAt(LocalDateTime.now().minusHours(2))
@@ -54,11 +55,37 @@ class CreadiScoreServiceTest {
 
         var response = service().calculateScore(9L);
 
-        assertThat(response.getBehaviorScore()).isEqualTo(200);
-        assertThat(response.getChildrenScore()).isEqualTo(25);
+        assertThat(response.getBehaviorScore()).isEqualTo(287);
+        assertThat(response.getChildrenScore()).isZero();
         assertThat(response.getBehaviorAnalysis()).isNotBlank();
-        assertThat(response.getImprovementTips()).contains("Complete your profile for better score");
+        assertThat(response.getImprovementTips()).contains(
+                "Complete a strong selfie and ID verification to gain more KYC points",
+                "Update your salary information to improve your score"
+        );
         verify(creadiScoreRepository).save(any());
+    }
+
+    @Test
+    void pendingInstallmentsDoNotIncreaseScore() {
+        User user = User.builder()
+                .id(11L)
+                .createdAt(LocalDateTime.now().minusHours(2))
+                .kycSubmittedAt(LocalDateTime.now())
+                .kycStatus(KycStatus.VERIFIED)
+                .kycFraudFlag(false)
+                .kycFailedAttempts(0)
+                .paymentScoreModifier(0)
+                .monthlySalary(1200.0)
+                .build();
+        when(userRepository.findById(11L)).thenReturn(Optional.of(user));
+        when(creadiScoreRepository.findByUserIdOrderByCreatedAtDesc(11L)).thenReturn(List.of());
+        when(installmentRepository.findByCreditRequestUserIdAndStatus(11L, InstallmentStatus.OVERDUE)).thenReturn(List.of());
+        when(installmentRepository.findByCreditRequestUserIdAndStatus(11L, InstallmentStatus.PAID)).thenReturn(List.of());
+
+        var response = service().calculateScore(11L);
+
+        assertThat(response.getBehaviorScore()).isEqualTo(200);
+        verify(installmentRepository, never()).findByCreditRequestUserIdAndStatus(11L, InstallmentStatus.PENDING);
     }
 
     @Test

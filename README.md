@@ -22,10 +22,11 @@ Local URLs:
 - Dashboard: `http://localhost:3000`
 - Backend API: `http://localhost:8082`
 - Swagger UI: `http://localhost:8082/swagger-ui.html`
-- phpMyAdmin: `http://localhost:8081`
+- phpMyAdmin for the Docker MySQL database: `http://localhost:8081`
 - Socket server health: `http://localhost:3001/health`
 
 The MySQL seed file is `scripts/db/initial-data.sql` and is mounted by Docker as `/docker-entrypoint-initdb.d/01-initial-data.sql`.
+Use `http://localhost:8081`, not `http://localhost/phpmyadmin`; port 80 may belong to a local XAMPP/WAMP phpMyAdmin instance and will not show the Docker `creaditn` database.
 
 ## Local Checks
 

@@ -41,6 +41,18 @@ export async function fetchBackend<T>(path: string, init?: RequestInit): Promise
   });
   if (!res.ok) {
     const text = await res.text().catch(() => `HTTP ${res.status}`);
+    let parsed: { message?: string; error?: string; data?: Record<string, string> } | null = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+    if (parsed?.message) throw new Error(parsed.message);
+    if (parsed?.error) throw new Error(parsed.error);
+    if (parsed?.data && typeof parsed.data === 'object') {
+      const first = Object.entries(parsed.data).find(([, value]) => typeof value === 'string');
+      if (first) throw new Error(`${first[0]}: ${first[1]}`);
+    }
     throw new Error(text || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;

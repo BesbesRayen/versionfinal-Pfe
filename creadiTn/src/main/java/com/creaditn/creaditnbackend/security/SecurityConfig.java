@@ -52,7 +52,7 @@ public class SecurityConfig {
                         .requestMatchers(PUBLIC_PATHS).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/stores", "/api/stores/**", "/api/public/stores", "/api/public/stores/**", "/api/credit-plans").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/files/kyc/**").hasRole("ADMIN")
+                        .requestMatchers("/api/files/kyc/**", "/api/uploads/kyc/**", "/uploads/kyc/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(adminAuthFilter, UsernamePasswordAuthenticationFilter.class)
