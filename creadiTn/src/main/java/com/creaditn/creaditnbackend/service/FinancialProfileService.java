@@ -19,7 +19,7 @@ import java.math.BigDecimal;
 public class FinancialProfileService {
 
     private static final BigDecimal MIN_MONTHLY_SALARY = BigDecimal.valueOf(100);
-    private static final BigDecimal MAX_MONTHLY_SALARY = BigDecimal.valueOf(5000);
+    private static final BigDecimal MAX_MONTHLY_SALARY = BigDecimal.valueOf(15000);
 
     private final FinancialProfileRepository financialProfileRepository;
     private final UserRepository userRepository;
@@ -86,7 +86,7 @@ public class FinancialProfileService {
         if (salary == null
                 || salary.compareTo(MIN_MONTHLY_SALARY) < 0
                 || salary.compareTo(MAX_MONTHLY_SALARY) > 0) {
-            throw new BadRequestException("Monthly salary must be between 100 and 5000 DT");
+            throw new BadRequestException("Monthly salary must be between 100 and 15000 DT");
         }
     }
 

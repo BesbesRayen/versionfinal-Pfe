@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import QRDownloadCard from '@/components/QRDownloadCard';
 
@@ -11,9 +13,26 @@ interface MobileAccessModalProps {
 }
 
 export default function MobileAccessModal({ isOpen, onClose, deepLink, title }: MobileAccessModalProps) {
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
 
-  return (
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
@@ -43,6 +62,7 @@ export default function MobileAccessModal({ isOpen, onClose, deepLink, title }: 
 
         <QRDownloadCard deepLink={deepLink} source="mobile-access-modal" />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

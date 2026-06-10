@@ -18,12 +18,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { useAuth } from "@/lib/auth";
+import FinancialProfileForm from "@/components/FinancialProfileForm";
 import {
   submitKycVerification,
   KycVerificationResult,
   UploadFileAsset,
   addCard,
-  saveFinancialProfile,
   CardType,
   getKycStatus,
   getCards,
@@ -46,8 +46,6 @@ const GR = colors.success;
 const RE = colors.error;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const ALLOWED_UPLOAD_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MIN_MONTHLY_SALARY = 100;
-const MAX_MONTHLY_SALARY = 5000;
 
 // --- Types ---
 interface KycData {
@@ -413,114 +411,6 @@ const s2 = StyleSheet.create({
   btnText: { color: WH, fontWeight: "800", fontSize: 15 },
 });
 
-// --- Step 3: Financial ---
-const EMP_OPTIONS = [
-  { value: "FULL_TIME", label: "Salarie temps plein" },
-  { value: "PART_TIME", label: "Salarie temps partiel" },
-  { value: "SELF_EMPLOYED", label: "Independant" },
-  { value: "STUDENT", label: "Etudiant" },
-  { value: "UNEMPLOYED", label: "Sans emploi" },
-];
-const SAL_DAYS = [1, 5, 10, 15, 20, 25, 28, 30];
-
-const Step3 = ({
-  onSuccess,
-  loading,
-  setLoading,
-  setError,
-}: {
-  onSuccess: () => void;
-  loading: boolean;
-  setLoading: (v: boolean) => void;
-  setError: (e: string | null) => void;
-}) => {
-  const { user } = useAuth();
-  const [salary, setSalary] = useState("");
-  const [salaryDay, setSalaryDay] = useState(25);
-  const [emp, setEmp] = useState("FULL_TIME");
-  const salaryNum = Number.parseFloat(salary);
-  const valid = Number.isFinite(salaryNum) && salaryNum >= MIN_MONTHLY_SALARY && salaryNum <= MAX_MONTHLY_SALARY;
-
-  const submit = async () => {
-    if (!user) return;
-    if (!valid) {
-      setError("Le salaire mensuel doit etre entre 100 DT et 5000 DT.");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      await saveFinancialProfile(user.userId, { monthlySalary: salaryNum, salaryDay, employmentStatus: emp });
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossible de sauvegarder.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <View style={s3.wrap}>
-      <View style={s3.section}>
-        <Text style={s3.label}>Salaire mensuel net (DT)</Text>
-        <View style={s3.salaryRow}>
-          <TextInput style={s3.salaryInput} value={salary} onChangeText={(t) => setSalary(t.replace(/[^0-9.]/g, ""))} placeholder="0" placeholderTextColor={G4} keyboardType="numeric" />
-          <View style={s3.salaryUnit}><Text style={s3.salaryUnitText}>DT</Text></View>
-        </View>
-        <Text style={s3.rangeHint}>Entre 100 DT et 5000 DT.</Text>
-      </View>
-      <View style={s3.section}>
-        <Text style={s3.label}>Situation professionnelle</Text>
-        <View style={s3.empGrid}>
-          {EMP_OPTIONS.map((o) => (
-            <Pressable key={o.value} style={[s3.empBtn, emp === o.value && s3.empBtnActive]} onPress={() => setEmp(o.value)}>
-              <Text style={[s3.empLabel, emp === o.value && s3.empLabelActive]}>{o.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-      <View style={s3.section}>
-        <Text style={s3.label}>Jour de reception du salaire</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={s3.dayRow}>
-            {SAL_DAYS.map((d) => (
-              <Pressable key={d} style={[s3.dayBtn, salaryDay === d && s3.dayBtnActive]} onPress={() => setSalaryDay(d)}>
-                <Text style={[s3.dayText, salaryDay === d && s3.dayTextActive]}>{d}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
-      <Pressable style={[s3.btn, (!valid || loading) && s3.btnOff]} onPress={submit} disabled={!valid || loading}>
-        {loading ? <ActivityIndicator color={WH} size="small" /> : <Text style={s3.btnText}>Terminer la verification</Text>}
-      </Pressable>
-    </View>
-  );
-};
-const s3 = StyleSheet.create({
-  wrap: { flex: 1, gap: 20 },
-  section: { gap: 8 },
-  label: { fontSize: 12, fontWeight: "700", color: G7, letterSpacing: 0.5 },
-  salaryRow: { flexDirection: "row" },
-  salaryInput: { flex: 1, height: 56, borderRadius: 14, borderTopRightRadius: 0, borderBottomRightRadius: 0, borderWidth: 1.5, borderColor: G3, paddingHorizontal: 16, fontSize: 22, fontWeight: "700", color: G9, backgroundColor: G1 },
-  salaryUnit: { width: 56, height: 56, borderRadius: 14, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderWidth: 1.5, borderColor: P + "44", backgroundColor: P + "22", alignItems: "center", justifyContent: "center" },
-  salaryUnitText: { color: P, fontWeight: "800", fontSize: 14 },
-  rangeHint: { fontSize: 11, color: G5, fontWeight: "700" },
-  empGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  empBtn: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: G1, borderWidth: 1.5, borderColor: "transparent" },
-  empBtnActive: { borderColor: P, backgroundColor: PL },
-  empLabel: { fontSize: 12, color: G7, fontWeight: "600" },
-  empLabelActive: { color: P },
-  dayRow: { flexDirection: "row", gap: 8, paddingVertical: 2 },
-  dayBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: G1, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "transparent" },
-  dayBtnActive: { borderColor: P, backgroundColor: PL },
-  dayText: { fontSize: 13, fontWeight: "700", color: G7 },
-  dayTextActive: { color: P },
-  btn: { backgroundColor: GR, borderRadius: 14, paddingVertical: 15, alignItems: "center", justifyContent: "center", shadowColor: GR, shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
-  btnOff: { opacity: 0.45 },
-  btnText: { color: WH, fontWeight: "800", fontSize: 15 },
-});
-
 // --- Result Screens ---
 const SuccessScreen = ({ onDone }: { onDone: () => void }) => (
   <View style={rs.wrap}>
@@ -854,11 +744,9 @@ const KycVerification = () => {
             />
           )}
           {step === 3 && (
-            <Step3
-              onSuccess={() => setKycSuccess(true)}
-              loading={loading}
-              setLoading={setLoading}
-              setError={setError}
+            <FinancialProfileForm
+              submitLabel="Terminer la verification"
+              onSaved={() => setKycSuccess(true)}
             />
           )}
         </ScrollView>

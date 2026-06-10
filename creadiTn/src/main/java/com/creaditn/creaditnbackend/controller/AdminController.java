@@ -48,7 +48,7 @@ public class AdminController {
     @Value("${app.admin.email:admin@bnpl.com}")
     private String adminEmail;
 
-    @Value("${app.admin.password:admin123}")
+    @Value("${app.admin.password}")
     private String adminPassword;
 
     @Value("${app.admin.token-secret:creaditn-admin-secret-2026}")

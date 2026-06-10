@@ -44,6 +44,7 @@ public class DevDatabaseResetService {
             "kyc_documents",
             "cards",
             "notifications",
+            "wallet_recharges",
             "user_wallet",
             "users",
             "articles",

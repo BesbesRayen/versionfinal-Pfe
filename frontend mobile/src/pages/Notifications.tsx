@@ -12,14 +12,17 @@ import MobileLayout from "@/components/MobileLayout";
 import BottomNav from "@/components/BottomNav";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { useAuth } from "@/lib/auth";
-import { AppNotification, getNotifications, markNotificationAsRead } from "@/lib/api";
+import { AppNotification, getNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "@/lib/api";
 import { colors, radii } from "@/lib/theme";
 
 const TYPE_ICON: Record<string, { icon: string; color: string }> = {
   CREDIT_APPROVED: { icon: "check-circle-outline", color: "#22C55E" },
   CREDIT_REJECTED: { icon: "close-circle-outline", color: "#EF4444" },
   PAYMENT_CONFIRMED: { icon: "cash-check", color: "#22C55E" },
+  PAYMENT_PENDING: { icon: "clock-fast", color: "#F59E0B" },
   PAYMENT_FAILED: { icon: "cash-remove", color: "#EF4444" },
+  PAYMENT_REFUNDED: { icon: "cash-refund", color: "#38BDF8" },
+  PAYMENT_REMINDER: { icon: "calendar-alert", color: "#F59E0B" },
   KYC_APPROVED: { icon: "shield-check-outline", color: "#22C55E" },
   KYC_REJECTED: { icon: "shield-off-outline", color: "#EF4444" },
   KYC_SUBMITTED: { icon: "shield-account-outline", color: "#F59E0B" },
@@ -47,7 +50,7 @@ const formatDate = (iso: string) => {
 
 const Notifications = () => {
   const { navigate } = useAppNavigation();
-  const { user } = useAuth();
+  const { user, creditSyncVersion } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,7 +74,7 @@ const Notifications = () => {
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
-  }, [load]);
+  }, [load, creditSyncVersion]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -99,7 +102,7 @@ const Notifications = () => {
     const previous = notifications;
     setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
     try {
-      await Promise.all(unread.map((item) => markNotificationAsRead(item.id)));
+      await markAllNotificationsAsRead();
       setErrorMessage("");
     } catch (error) {
       setNotifications(previous);

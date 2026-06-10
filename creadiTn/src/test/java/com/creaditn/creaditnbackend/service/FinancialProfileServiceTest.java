@@ -55,16 +55,16 @@ class FinancialProfileServiceTest {
 
         assertThatThrownBy(() -> service.createOrUpdate(7L, request("99.99")))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("between 100 and 5000");
+                .hasMessageContaining("between 100 and 15000");
     }
 
     @Test
     void createOrUpdateRejectsSalaryAboveMaximum() {
         mockEligibleUser();
 
-        assertThatThrownBy(() -> service.createOrUpdate(7L, request("5000.01")))
+        assertThatThrownBy(() -> service.createOrUpdate(7L, request("15000.01")))
                 .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("between 100 and 5000");
+                .hasMessageContaining("between 100 and 15000");
     }
 
     @Test
@@ -86,9 +86,9 @@ class FinancialProfileServiceTest {
                 .build();
         when(financialProfileRepository.findByUserId(7L)).thenReturn(Optional.of(existingProfile));
 
-        var maxResult = service.createOrUpdate(7L, request("5000.00"));
+        var maxResult = service.createOrUpdate(7L, request("15000.00"));
 
-        assertThat(maxResult.getMonthlySalary()).isEqualByComparingTo("5000.00");
+        assertThat(maxResult.getMonthlySalary()).isEqualByComparingTo("15000.00");
         assertThat(maxResult.getRiskLevel()).isEqualTo(RiskLevel.LOW);
         verify(financialProfileRepository, times(2)).save(any(FinancialProfile.class));
         verify(creadiScoreService, times(2)).calculateScore(7L);

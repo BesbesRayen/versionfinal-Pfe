@@ -93,8 +93,8 @@ export default function SupportPage() {
   const filteredFAQs = faqs.filter((faq) => faq.category === selectedFAQCategory);
 
   return (
-    <div className="bg-[#070b14] pt-20 text-white">
-      <section className="relative overflow-hidden py-16 md:py-24">
+    <div className="min-h-screen bg-[#070b14] pt-16 text-white">
+      <section className="relative overflow-hidden pb-20 pt-16 md:pb-24 md:pt-20">
         <div className="absolute inset-0 bg-[linear-gradient(135deg,#070b14_0%,#0d1424_52%,#11172a_100%)]" />
         <div
           className="absolute inset-0 opacity-[0.16]"
@@ -105,15 +105,15 @@ export default function SupportPage() {
         />
 
         <div className="container-custom relative z-10 mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-3xl text-center">
+          <div className="mx-auto max-w-5xl text-center">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-indigo-400/20 bg-indigo-500/10 px-4 py-2">
               <Headphones className="h-4 w-4 text-indigo-300" />
               <span className="text-sm font-medium text-indigo-200">Service client</span>
             </div>
-            <h1 className="mb-6 font-display text-3xl font-bold text-white sm:text-4xl lg:text-5xl">
+            <h1 className="mx-auto mb-6 max-w-4xl text-balance font-display text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-6xl">
               Comment pouvons-nous <span className="gradient-text">vous aider ?</span>
             </h1>
-            <p className="text-lg leading-relaxed text-slate-300">
+            <p className="mx-auto max-w-3xl text-lg leading-relaxed text-slate-300">
               Notre equipe de support est disponible pour repondre a vos questions et resoudre vos
               problemes rapidement.
             </p>
@@ -121,7 +121,7 @@ export default function SupportPage() {
         </div>
       </section>
 
-      <section className="section-padding !pt-0">
+      <section className="px-4 pb-20 pt-12 sm:px-6 md:pb-28 md:pt-16 lg:px-8">
         <div className="container-custom mx-auto">
           <div className="mb-20 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {supportCategories.map((cat) => (

@@ -80,3 +80,16 @@ CREATE TABLE IF NOT EXISTS admin_notifications (
     INDEX idx_admin_notifications_read (is_read),
     INDEX idx_admin_notifications_created_at (created_at)
 );
+
+CREATE TABLE IF NOT EXISTS wallet_recharges (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    billing_cycle VARCHAR(7) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    balance_before DECIMAL(10,2) NOT NULL,
+    balance_after DECIMAL(10,2) NOT NULL,
+    processed_at DATETIME NOT NULL,
+    CONSTRAINT uq_wallet_recharge_user_cycle UNIQUE (user_id, billing_cycle),
+    CONSTRAINT fk_wallet_recharge_user FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_wallet_recharge_user_processed (user_id, processed_at)
+);

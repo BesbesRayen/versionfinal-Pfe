@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -19,6 +20,7 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final SocketEventService socketEventService;
 
     public void sendNotification(Long userId, String title, String message, NotificationType type) {
         User user = userRepository.findById(userId)
@@ -31,7 +33,15 @@ public class NotificationService {
                 .type(type)
                 .build();
 
-        notificationRepository.save(notification);
+        Notification saved = notificationRepository.save(notification);
+        socketEventService.emitUserEvent("notification", userId, Map.of(
+                "id", saved.getId(),
+                "title", title,
+                "message", message,
+                "type", type.name(),
+                "read", false,
+                "createdAt", saved.getCreatedAt().toString()
+        ));
 
         if (shouldSendEmail(type)) {
             emailService.send(user.getEmail(), title, message);
@@ -52,11 +62,23 @@ public class NotificationService {
         return notificationRepository.countByUserIdAndReadFalse(userId);
     }
 
-    public void markAsRead(Long notificationId) {
-        Notification notification = notificationRepository.findById(notificationId)
+    public void markAsRead(Long notificationId, Long userId) {
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
+        if (Boolean.TRUE.equals(notification.getRead())) {
+            return;
+        }
         notification.setRead(true);
         notificationRepository.save(notification);
+        socketEventService.emitUserEvent("notification-read", userId, Map.of("id", notificationId));
+    }
+
+    public int markAllAsRead(Long userId) {
+        List<Notification> unread = notificationRepository.findByUserIdAndReadFalseOrderByCreatedAtDesc(userId);
+        unread.forEach(notification -> notification.setRead(true));
+        notificationRepository.saveAll(unread);
+        socketEventService.emitUserEvent("notifications-read-all", userId, Map.of("count", unread.size()));
+        return unread.size();
     }
 
     private NotificationDto mapToDto(Notification n) {
@@ -75,7 +97,10 @@ public class NotificationService {
         return type == NotificationType.KYC_VALIDATED
                 || type == NotificationType.CREDIT_APPROVED
                 || type == NotificationType.PAYMENT_CONFIRMED
-                || type == NotificationType.PAYMENT_REMINDER;
+                || type == NotificationType.PAYMENT_FAILED
+                || type == NotificationType.PAYMENT_REFUNDED
+                || type == NotificationType.PAYMENT_REMINDER
+                || type == NotificationType.INSTALLMENT_OVERDUE;
     }
 }
 

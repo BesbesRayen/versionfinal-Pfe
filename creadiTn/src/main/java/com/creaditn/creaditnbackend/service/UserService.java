@@ -35,6 +35,7 @@ public class UserService {
     private final TransactionRepository transactionRepository;
     private final FinancialProfileRepository financialProfileRepository;
     private final UserWalletRepository userWalletRepository;
+    private final WalletRechargeRepository walletRechargeRepository;
     private final KycAuditLogRepository kycAuditLogRepository;
 
     public UserDto getUserById(Long id) {
@@ -152,6 +153,7 @@ public class UserService {
         creadiScoreRepository.deleteAll(creadiScoreRepository.findByUserIdOrderByCreatedAtDesc(userId));
         transactionRepository.deleteAll(transactionRepository.findByUserIdOrderByCreatedAtDesc(userId));
         financialProfileRepository.findByUserId(userId).ifPresent(financialProfileRepository::delete);
+        walletRechargeRepository.deleteAll(walletRechargeRepository.findByUserIdOrderByBillingCycleDesc(userId));
         userWalletRepository.findByUserId(userId).ifPresent(userWalletRepository::delete);
         userRepository.delete(user);
     }
@@ -208,10 +210,13 @@ public class UserService {
         // 11. FinancialProfile
         financialProfileRepository.findByUserId(userId).ifPresent(financialProfileRepository::delete);
 
-        // 12. UserWallet
+        // 12. Wallet recharge history
+        walletRechargeRepository.deleteAll(walletRechargeRepository.findByUserIdOrderByBillingCycleDesc(userId));
+
+        // 13. UserWallet
         userWalletRepository.findByUserId(userId).ifPresent(userWalletRepository::delete);
 
-        // 13. Soft-delete: mark account as deleted and scramble PII so the email can be re-used
+        // 14. Soft-delete: mark account as deleted and scramble PII so the email can be re-used
         //     by a *new* account, but the identity lock remains on the KYC documents.
         user.setAccountDeleted(true);
         user.setFirstName("Deleted");

@@ -16,8 +16,8 @@ import lombok.NoArgsConstructor;
 public class CreateFinancialProfileRequest {
 
     @NotNull(message = "Monthly salary is required")
-    @DecimalMin(value = "100.0", message = "Monthly salary must be between 100 and 5000 DT")
-    @DecimalMax(value = "5000.0", message = "Monthly salary must be between 100 and 5000 DT")
+    @DecimalMin(value = "100.0", message = "Monthly salary must be between 100 and 15000 DT")
+    @DecimalMax(value = "15000.0", message = "Monthly salary must be between 100 and 15000 DT")
     private Double monthlySalary;
 
     @NotNull(message = "Salary day is required")

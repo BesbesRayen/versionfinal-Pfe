@@ -1,7 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
+import { AppState, Vibration } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AuthResponse, setAuthErrorHandler, setAuthToken } from "@/lib/api";
+import { disconnectRealtimeSocket, resumeRealtimeSocket, subscribeToUserSync } from "@/lib/socket";
 
 type AuthUser = Pick<AuthResponse, "userId" | "email" | "firstName" | "lastName">;
 
@@ -31,6 +33,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
   const doLogout = () => {
+    disconnectRealtimeSocket();
     setUserState(null);
     setToken(null);
     setAuthToken(null);
@@ -58,6 +61,38 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!user || !token) return;
+
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        setCreditSyncVersion((value) => value + 1);
+        refreshTimer = null;
+      }, 75);
+    };
+
+    const unsubscribe = subscribeToUserSync(user.userId, token, (reason) => {
+      if (reason === "notification") {
+        Vibration.vibrate(120);
+      }
+      scheduleRefresh();
+    });
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        resumeRealtimeSocket();
+        scheduleRefresh();
+      }
+    });
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      unsubscribe();
+      appStateSubscription.remove();
+    };
+  }, [user, token]);
 
   useEffect(() => {
     setAuthErrorHandler(() => {

@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.time.Duration;
 
 @Component
 public class JwtUtil {
@@ -60,5 +61,28 @@ public class JwtUtil {
 
     public String getEmailFromToken(String token) {
         return getClaims(token).getSubject();
+    }
+
+    public String generateReceiptToken(Long paymentId, Long userId) {
+        Date now = new Date();
+        return Jwts.builder()
+                .subject("receipt")
+                .claim("paymentId", paymentId)
+                .claim("userId", userId)
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + Duration.ofMinutes(10).toMillis()))
+                .signWith(getKey())
+                .compact();
+    }
+
+    public boolean validateReceiptToken(String token, Long paymentId, Long userId) {
+        try {
+            Claims claims = getClaims(token);
+            return "receipt".equals(claims.getSubject())
+                    && paymentId.equals(((Number) claims.get("paymentId")).longValue())
+                    && userId.equals(((Number) claims.get("userId")).longValue());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 }

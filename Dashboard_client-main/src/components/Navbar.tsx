@@ -7,7 +7,6 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart2,
   Bell,
-  ChevronDown,
   CreditCard,
   Gift,
   Home,
@@ -27,6 +26,8 @@ const navLinks = [
 ];
 
 type JwtUser = {
+  id?: number;
+  userId?: number;
   firstName: string;
   lastName: string;
   email: string;
@@ -36,6 +37,7 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [jwtUser, setJwtUser] = useState<JwtUser | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { data: session } = useSession();
   const pathname = usePathname();
 
@@ -68,6 +70,27 @@ export default function Navbar() {
   }, []);
 
   useEffect(() => {
+    const updateUnread = (event: Event) => {
+      const count = Number((event as CustomEvent<{ count: number }>).detail?.count ?? 0);
+      setUnreadCount(Number.isFinite(count) ? Math.max(0, count) : 0);
+    };
+    window.addEventListener('credittn:notification-count', updateUnread);
+
+    const token = localStorage.getItem('token');
+    const userId = jwtUser?.userId ?? jwtUser?.id;
+    if (token && userId) {
+      fetch(`/api/backend/api/notifications/unread-count?userId=${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((response) => response.ok ? response.json() : 0)
+        .then((count) => setUnreadCount(Number(count) || 0))
+        .catch(() => setUnreadCount(0));
+    }
+
+    return () => window.removeEventListener('credittn:notification-count', updateUnread);
+  }, [jwtUser]);
+
+  useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
     handleScroll();
     window.addEventListener('scroll', handleScroll);
@@ -92,6 +115,15 @@ export default function Navbar() {
     }
 
     window.location.replace('/login');
+  };
+
+  const handleNotifications = () => {
+    if (pathname === '/dashboard') {
+      window.dispatchEvent(new CustomEvent('credittn:open-notifications'));
+      return;
+    }
+
+    window.location.assign('/dashboard?notifications=open');
   };
 
   return (
@@ -136,9 +168,18 @@ export default function Navbar() {
 
           <div className="hidden items-center gap-3 md:flex">
             {isLoggedIn && (
-              <button className="relative rounded-2xl p-2 transition-colors hover:bg-white/5" aria-label="Notifications">
+              <button
+                type="button"
+                onClick={handleNotifications}
+                className="relative rounded-2xl p-2 transition-colors hover:bg-white/5"
+                aria-label="Notifications"
+              >
                 <Bell className="h-5 w-5 text-slate-400" />
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-indigo-400" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-black text-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </button>
             )}
 
@@ -156,7 +197,6 @@ export default function Navbar() {
                     <User className="h-3.5 w-3.5 text-white" />
                   </div>
                   <span className="text-sm font-semibold text-white">{displayName.split(' ')[0]}</span>
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
                 </div>
                 <button
                   onClick={handleLogout}
@@ -186,9 +226,18 @@ export default function Navbar() {
 
           <div className="flex items-center gap-2 md:hidden">
             {isLoggedIn && (
-              <button className="relative rounded-2xl p-2 transition-colors hover:bg-white/5" aria-label="Notifications">
+              <button
+                type="button"
+                onClick={handleNotifications}
+                className="relative rounded-2xl p-2 transition-colors hover:bg-white/5"
+                aria-label="Notifications"
+              >
                 <Bell className="h-5 w-5 text-slate-400" />
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-indigo-400" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-indigo-500 px-1 text-[9px] font-black text-white">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </button>
             )}
             <button

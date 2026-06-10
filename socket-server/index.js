@@ -21,11 +21,21 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 
 const PORT = process.env.SOCKET_PORT ?? 3001;
 // Secret shared with Spring Boot backend to authorise emit requests
-const EMIT_SECRET = process.env.SOCKET_EMIT_SECRET ?? 'creaditn-socket-secret-2026';
+const EMIT_SECRET = process.env.SOCKET_EMIT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET;
 const SOCKET_DEBUG = process.env.SOCKET_DEBUG === 'true';
+const ALLOWED_ORIGINS = (process.env.SOCKET_ALLOWED_ORIGINS ?? 'http://localhost:3000,http://localhost:8083')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+if (!EMIT_SECRET || !JWT_SECRET) {
+  throw new Error('SOCKET_EMIT_SECRET and JWT_SECRET are required');
+}
 
 function debugLog(...parts) {
   if (!SOCKET_DEBUG) {
@@ -35,28 +45,49 @@ function debugLog(...parts) {
 }
 
 const app = express();
-app.use(cors({ origin: '*' }));
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: '*',
+    origin: ALLOWED_ORIGINS,
     methods: ['GET', 'POST'],
   },
 });
 
 // ── Socket.IO connection ────────────────────────────────────────────────────
 
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!JWT_SECRET || !token) {
+    next(new Error('Authentication required'));
+    return;
+  }
+
+  try {
+    const claims = jwt.verify(token, JWT_SECRET);
+    if (!claims?.userId) {
+      next(new Error('Invalid user token'));
+      return;
+    }
+    socket.data.userId = String(claims.userId);
+    next();
+  } catch {
+    next(new Error('Invalid or expired token'));
+  }
+});
+
 io.on('connection', (socket) => {
   debugLog(`[socket] client connected: ${socket.id}`);
+  const room = `user:${socket.data.userId}`;
+  socket.join(room);
+  socket.emit('sync-required', { reason: 'authenticated-user-room' });
 
-  // Client joins its personal room to receive user-scoped events
-  socket.on('join-user', (userId) => {
-    if (!userId) return;
-    const room = `user:${userId}`;
-    socket.join(room);
-    debugLog(`[socket] ${socket.id} joined room ${room}`);
+  socket.on('join-user', (_ignoredUserId, acknowledge) => {
+    if (typeof acknowledge === 'function') {
+      acknowledge({ ok: true, room });
+    }
   });
 
   socket.on('disconnect', () => {
@@ -82,12 +113,16 @@ app.post('/emit', (req, res) => {
     'new-article', 'update-article', 'delete-article',
     // user-scoped events (require userId in data)
     'kyc-update', 'credit-update', 'payment-due', 'notification',
+    'notification-read', 'notifications-read-all',
   ];
   if (!event || !allowedEvents.includes(event)) {
     return res.status(400).json({ error: 'Unknown event' });
   }
 
-  const userScopedEvents = ['kyc-update', 'credit-update', 'payment-due', 'notification'];
+  const userScopedEvents = [
+    'kyc-update', 'credit-update', 'payment-due', 'notification',
+    'notification-read', 'notifications-read-all',
+  ];
   if (userScopedEvents.includes(event)) {
     const userId = data?.userId;
     if (!userId) {

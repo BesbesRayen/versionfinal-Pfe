@@ -215,19 +215,19 @@ public class CreditService {
         userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        double totalLimit = creadiScoreService.computeCreditLimitForUser(userId);
-        BigDecimal usedPrincipal = creditRequestRepository.findByUserIdAndStatus(userId, CreditRequestStatus.APPROVED)
-                .stream()
-                .map(this::calculateRemainingPrincipal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        double usedCredit = usedPrincipal.doubleValue();
-        double available = Math.max(0, totalLimit - usedCredit);
+        CreadiScoreService.BuyingPowerSnapshot buyingPower = creadiScoreService.computeBuyingPowerForUser(userId);
 
         return CreditBalanceResponse.builder()
-                .totalLimit(totalLimit)
-                .usedCredit(usedCredit)
-                .availableCredit(available)
+                .buyingPowerLimit(buyingPower.buyingPowerLimit())
+                .baseBuyingPower(buyingPower.baseBuyingPower())
+                .paymentTrustBonus(buyingPower.paymentTrustBonus())
+                .outstandingBalance(buyingPower.outstandingBalance())
+                .availableCredit(buyingPower.availableCredit())
+                .usedPercent(buyingPower.usedPercent())
+                .nextInstallmentAmount(buyingPower.nextInstallmentAmount())
+                .nextInstallmentDate(buyingPower.nextInstallmentDate())
+                .totalLimit(buyingPower.buyingPowerLimit())
+                .usedCredit(buyingPower.outstandingBalance())
                 .build();
     }
 

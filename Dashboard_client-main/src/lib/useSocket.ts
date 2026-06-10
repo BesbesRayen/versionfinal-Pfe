@@ -15,7 +15,7 @@ import { io, Socket } from 'socket.io-client';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? 'http://localhost:3001';
 
 export interface SocketEvent {
-  type: 'kyc-update' | 'credit-update' | 'payment-due' | 'notification';
+  type: 'kyc-update' | 'credit-update' | 'payment-due' | 'notification' | 'notification-read' | 'notifications-read-all';
   data: Record<string, unknown>;
   receivedAt: number;
 }
@@ -23,33 +23,42 @@ export interface SocketEvent {
 interface UseSocketReturn {
   connected: boolean;
   lastEvent: SocketEvent | null;
+  reconnecting: boolean;
 }
 
-export function useSocket(userId: string | number | null | undefined): UseSocketReturn {
+export function useSocket(userId: string | number | null | undefined, token: string | null): UseSocketReturn {
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [lastEvent, setLastEvent] = useState<SocketEvent | null>(null);
 
   useEffect(() => {
     // Only connect when we have a userId
-    if (!userId) return;
+    if (!userId || !token) return;
 
     const socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
+      auth: { token },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
     });
     socketRef.current = socket;
 
     socket.on('connect', () => {
       setConnected(true);
-      // Join personal room so the server can target this user
+      setReconnecting(false);
       socket.emit('join-user', String(userId));
     });
 
     socket.on('disconnect', () => {
       setConnected(false);
     });
+    socket.io.on('reconnect_attempt', () => setReconnecting(true));
+    socket.io.on('reconnect', () => setReconnecting(false));
+    socket.io.on('reconnect_failed', () => setReconnecting(false));
 
     const handleEvent = (type: SocketEvent['type']) => (data: Record<string, unknown>) => {
       setLastEvent({ type, data, receivedAt: Date.now() });
@@ -59,13 +68,15 @@ export function useSocket(userId: string | number | null | undefined): UseSocket
     socket.on('credit-update', handleEvent('credit-update'));
     socket.on('payment-due',   handleEvent('payment-due'));
     socket.on('notification',  handleEvent('notification'));
+    socket.on('notification-read', handleEvent('notification-read'));
+    socket.on('notifications-read-all', handleEvent('notifications-read-all'));
 
     return () => {
       socket.disconnect();
       socketRef.current = null;
       setConnected(false);
     };
-  }, [userId]);
+  }, [userId, token]);
 
-  return { connected, lastEvent };
+  return { connected, lastEvent, reconnecting };
 }

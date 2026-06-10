@@ -21,6 +21,7 @@ import { mobileDownloadConfig } from '@/config/mobileDownloadConfig';
 import {
   getExpoGoUrl,
   getMobileDownloadLandingUrl,
+  getMobileWebUrl,
 } from '@/lib/mobile-download';
 import { isValidMobileLink } from '@/lib/mobile-redirect';
 
@@ -56,6 +57,15 @@ const modeBadges = {
   },
 } as const;
 
+const isMobileWebExpoUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'exp:' && url.port === '8083';
+  } catch {
+    return false;
+  }
+};
+
 export default function QRDownloadCard({ deepLink = mobileDownloadConfig.defaultDeepLink, source = 'homepage-qr' }: QRDownloadCardProps) {
   const [downloadUrl, setDownloadUrl] = useState(mobileDownloadConfig.downloadLandingUrl);
   const [status, setStatus] = useState<QrStatus>('loading');
@@ -87,7 +97,12 @@ export default function QRDownloadCard({ deepLink = mobileDownloadConfig.default
   const refreshQr = () => {
     setStatus('loading');
     const origin = typeof window === 'undefined' ? '' : window.location.origin;
-    const nextUrl = getMobileDownloadLandingUrl(origin, { deepLink, source });
+    const mobileWebUrl = getMobileWebUrl(origin);
+    const nextUrl = mobileDownloadConfig.mode === 'expo-go' && isMobileWebExpoUrl(mobileDownloadConfig.expoGoUrl) && mobileWebUrl
+      ? mobileWebUrl
+      : mobileDownloadConfig.mode === 'expo-go'
+      ? getExpoGoUrl(deepLink)
+      : getMobileDownloadLandingUrl(origin, { deepLink, source });
     setDownloadUrl(nextUrl);
 
     window.setTimeout(() => {

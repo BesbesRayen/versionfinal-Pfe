@@ -8,4 +8,5 @@ import lombok.*;
 public class AutopaySettingsDto {
     private boolean enabled;
     private String dayOfMonth;
+    private String password;
 }

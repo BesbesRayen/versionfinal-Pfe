@@ -34,10 +34,12 @@ public class Installment {
     private LocalDateTime paidDate;
 
     private BigDecimal penalty;
+    private Boolean latePenaltyApplied;
 
     @PrePersist
     protected void onCreate() {
         if (status == null) status = InstallmentStatus.PENDING;
         if (penalty == null) penalty = BigDecimal.ZERO;
+        if (latePenaltyApplied == null) latePenaltyApplied = false;
     }
 }

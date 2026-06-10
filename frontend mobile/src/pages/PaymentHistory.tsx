@@ -25,8 +25,10 @@ const TYPE_CONFIG: Record<string, { icon: string; color: string; bg: string; pre
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  SUCCESS: { label: "Reussi",  color: "#34d399" },
-  FAILED:  { label: "Echoue", color: "#f87171" },
+  SUCCESS: { label: "Réussi", color: "#34d399" },
+  PENDING: { label: "En attente", color: "#fbbf24" },
+  FAILED: { label: "Échoué", color: "#f87171" },
+  REFUNDED: { label: "Remboursé", color: "#60a5fa" },
 };
 
 const formatDate = (iso: string) => {
@@ -36,7 +38,7 @@ const formatDate = (iso: string) => {
 
 const PaymentHistory = () => {
   const { navigate } = useAppNavigation();
-  const { user } = useAuth();
+  const { user, creditSyncVersion } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [receipts, setReceipts] = useState<Payment[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
@@ -71,7 +73,7 @@ const PaymentHistory = () => {
     }
   }, [user]);
 
-  useEffect(() => { loadPayments(); }, [loadPayments]);
+  useEffect(() => { loadPayments(); }, [loadPayments, creditSyncVersion]);
 
   const totalPaid = receipts.reduce((sum, receipt) => sum + receipt.amount, 0);
   const activeCredit = useMemo(
@@ -87,6 +89,26 @@ const PaymentHistory = () => {
   const nextPayment = [...pendingInstallments].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0] ?? null;
   const paidCount = installments.filter((item) => item.status === "PAID").length;
   const progress = installments.length > 0 ? Math.round((paidCount / installments.length) * 100) : 0;
+  const receiptGroups = useMemo(() => {
+    const grouped = new Map<string, Payment[]>();
+    receipts.forEach((receipt) => {
+      const article = receipt.productName?.trim() || "Paiement CreditTN";
+      if (!grouped.has(article)) grouped.set(article, []);
+      grouped.get(article)!.push(receipt);
+    });
+
+    return Array.from(grouped.entries())
+      .map(([article, articleReceipts]) => ({
+        article,
+        receipts: [...articleReceipts].sort(
+          (a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime(),
+        ),
+        total: articleReceipts.reduce((sum, receipt) => sum + receipt.amount, 0),
+      }))
+      .sort(
+        (a, b) => new Date(b.receipts[0].paidAt).getTime() - new Date(a.receipts[0].paidAt).getTime(),
+      );
+  }, [receipts]);
 
   return (
     <MobileLayout noPadding>
@@ -105,51 +127,46 @@ const PaymentHistory = () => {
         <FintechCard style={styles.paymentHero}>
           <View style={styles.heroTop}>
             <View>
-              <Text style={styles.heroLabel}>Solde restant</Text>
+              <Text style={styles.heroLabel}>Reste à payer</Text>
               <Text style={styles.heroValue}>{remainingBalance.toFixed(2)} TND</Text>
-              <Text style={styles.heroSub}>Disponible: {(balance?.availableCredit ?? 0).toFixed(2)} TND</Text>
+              <Text style={styles.heroSub}>Disponible : {(balance?.availableCredit ?? 0).toFixed(2)} TND</Text>
             </View>
-            <ProgressRing percent={progress} color={colors.success} label="paye" />
+            <ProgressRing percent={progress} color={colors.success} label="payé" />
           </View>
           <View style={styles.heroStats}>
-            <MiniStat label="Finance" value={`${activeCredit.toFixed(0)} DT`} icon="bank-outline" color={colors.primary} />
-            <MiniStat label="Interet" value={`${totalInterest.toFixed(0)} DT`} icon="percent-outline" color={colors.warning} />
+            <MiniStat label="Financé" value={`${activeCredit.toFixed(0)} DT`} icon="bank-outline" color={colors.primary} />
+            <MiniStat label="Intérêt" value={`${totalInterest.toFixed(0)} DT`} icon="percent-outline" color={colors.warning} />
           </View>
           <View style={styles.nextPaymentCard}>
             <MaterialCommunityIcons name="calendar-clock" size={18} color={colors.primary} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.nextLabel}>Prochaine mensualite</Text>
+              <Text style={styles.nextLabel}>Prochaine mensualité</Text>
               <Text style={styles.nextValue}>
-                {nextPayment ? `${nextPayment.amount.toFixed(2)} TND · ${formatDate(nextPayment.dueDate)}` : "Aucune echeance active"}
+                {nextPayment ? `${nextPayment.amount.toFixed(2)} TND · ${formatDate(nextPayment.dueDate)}` : "Aucune échéance active"}
               </Text>
             </View>
           </View>
+          {remainingBalance > 0 && (
+            <Pressable
+              style={styles.payNowButton}
+              onPress={() => navigate("Installments")}
+              accessibilityRole="button"
+              accessibilityLabel="Voir les échéances à payer"
+            >
+              <MaterialCommunityIcons name="credit-card-check-outline" size={18} color={colors.white} />
+              <Text style={styles.payNowText}>Payer une échéance</Text>
+              <MaterialCommunityIcons name="arrow-right" size={18} color={colors.white} />
+            </Pressable>
+          )}
         </FintechCard>
 
         <View style={styles.summaryCard}>
-          <View style={styles.summaryItem}><Text style={styles.summaryLabel}>Total paye</Text><Text style={styles.summaryValue}>{totalPaid.toFixed(2)} TND</Text></View>
+          <View style={styles.summaryItem}><Text style={styles.summaryLabel}>Total payé</Text><Text style={styles.summaryValue}>{totalPaid.toFixed(2)} TND</Text></View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryItem}><Text style={styles.summaryLabel}>Transactions</Text><Text style={styles.summaryValue}>{transactions.length}</Text></View>
           <View style={styles.summaryDivider} />
-          <View style={styles.summaryItem}><Text style={styles.summaryLabel}>Reussies</Text><Text style={[styles.summaryValue, { color: colors.success }]}>{transactions.filter((t) => t.status === "SUCCESS").length}</Text></View>
+          <View style={styles.summaryItem}><Text style={styles.summaryLabel}>Réussies</Text><Text style={[styles.summaryValue, { color: colors.success }]}>{transactions.filter((t) => t.status === "SUCCESS").length}</Text></View>
         </View>
-
-        {installments.length > 0 && (
-          <View style={styles.timelineCard}>
-            <Text style={styles.timelineTitle}>Timeline de remboursement</Text>
-            {installments.slice(0, 5).map((item, index) => (
-              <View key={item.id} style={styles.timelineRow}>
-                <View style={[styles.timelineDot, item.status === "PAID" && styles.timelineDotPaid]} />
-                {index < Math.min(installments.length, 5) - 1 && <View style={styles.timelineLine} />}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.timelineMain}>{item.productName ?? `Credit #${item.creditRequestId}`}</Text>
-                  <Text style={styles.timelineSub}>{formatDate(item.dueDate)}</Text>
-                </View>
-                <Text style={[styles.timelineAmount, item.status === "PAID" && { color: colors.success }]}>{item.amount.toFixed(2)} DT</Text>
-              </View>
-            ))}
-          </View>
-        )}
 
         {loading && (
           <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
@@ -159,8 +176,8 @@ const PaymentHistory = () => {
         {!loading && receipts.length === 0 && transactions.length === 0 && (
           <View style={styles.emptyWrap}>
             <MaterialCommunityIcons name="receipt-text-outline" size={48} color={colors.gray400} />
-            <Text style={styles.emptyText}>Aucun recu</Text>
-            <Text style={styles.emptySubtext}>Vos recus de paiement apparaitront ici.</Text>
+            <Text style={styles.emptyText}>Aucun reçu</Text>
+            <Text style={styles.emptySubtext}>Vos reçus de paiement apparaîtront ici.</Text>
           </View>
         )}
 
@@ -168,39 +185,62 @@ const PaymentHistory = () => {
           <View style={styles.receiptsCard}>
             <View style={styles.receiptsHeader}>
               <View>
-                <Text style={styles.receiptsEyebrow}>Recus enregistres</Text>
+                <Text style={styles.receiptsEyebrow}>Reçus enregistrés</Text>
                 <Text style={styles.receiptsTitle}>Historique des paiements</Text>
               </View>
               <View style={styles.receiptsCount}>
                 <Text style={styles.receiptsCountText}>{receipts.length}</Text>
               </View>
             </View>
-            {receipts.map((receipt) => {
-              const receiptUrl = `${API_BASE_URL}${receipt.receiptDownloadUrl ?? `/api/payments/receipt/${receipt.id}`}`;
-              return (
-                <View key={receipt.id} style={styles.receiptRow}>
-                  <View style={styles.receiptIcon}>
-                    <MaterialCommunityIcons name={receipt.automaticPayment ? "autorenew" : "receipt-text-check-outline"} size={20} color={colors.primary} />
+            {receiptGroups.map((group) => (
+              <View key={group.article} style={styles.articleGroup}>
+                <View style={styles.articleGroupHeader}>
+                  <View style={styles.articleGroupIcon}>
+                    <MaterialCommunityIcons name="shopping-outline" size={18} color={colors.primary} />
                   </View>
-                  <View style={styles.receiptInfo}>
-                    <Text style={styles.receiptProduct} numberOfLines={1}>{receipt.productName ?? "Paiement CreditTN"}</Text>
-                    <Text style={styles.receiptNumber} numberOfLines={1}>{receipt.receiptNumber ?? receipt.transactionReference}</Text>
-                    <Text style={styles.receiptMeta}>
-                      {formatDate(receipt.paidAt)}
-                      {receipt.installmentNumber ? ` · Mensualite ${receipt.installmentNumber}` : ""}
-                      {receipt.automaticPayment ? " · Auto" : ""}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.articleGroupTitle} numberOfLines={2}>{group.article}</Text>
+                    <Text style={styles.articleGroupMeta}>
+                      {group.receipts.length} paiement{group.receipts.length > 1 ? "s" : ""}
                     </Text>
                   </View>
-                  <View style={styles.receiptRight}>
-                    <Text style={styles.receiptAmount}>{receipt.amount.toFixed(2)} TND</Text>
-                    <Pressable style={styles.downloadBtn} onPress={() => Linking.openURL(receiptUrl)}>
-                      <MaterialCommunityIcons name="download" size={13} color={colors.primary} />
-                      <Text style={styles.downloadBtnText}>PDF</Text>
-                    </Pressable>
-                  </View>
+                  <Text style={styles.articleGroupTotal}>{group.total.toFixed(2)} TND</Text>
                 </View>
-              );
-            })}
+                {group.receipts.map((receipt) => {
+                  const receiptUrl = receipt.receiptDownloadUrl
+                    ? `${API_BASE_URL}${receipt.receiptDownloadUrl}`
+                    : null;
+                  return (
+                    <View key={receipt.id} style={styles.receiptRow}>
+                      <View style={styles.receiptIcon}>
+                        <MaterialCommunityIcons name={receipt.automaticPayment ? "autorenew" : "receipt-text-check-outline"} size={20} color={colors.primary} />
+                      </View>
+                      <View style={styles.receiptInfo}>
+                        <Text style={styles.receiptNumber} numberOfLines={1}>{receipt.receiptNumber ?? receipt.transactionReference}</Text>
+                        <Text style={styles.receiptMeta}>
+                          {formatDate(receipt.paidAt)}
+                          {receipt.installmentNumber ? ` · Mensualité ${receipt.installmentNumber}` : ""}
+                          {receipt.automaticPayment ? " · Auto" : ""}
+                        </Text>
+                      </View>
+                      <View style={styles.receiptRight}>
+                        <Text style={styles.receiptAmount}>{receipt.amount.toFixed(2)} TND</Text>
+                        <Pressable
+                          style={[styles.downloadBtn, !receiptUrl && styles.downloadBtnDisabled]}
+                          onPress={() => receiptUrl && Linking.openURL(receiptUrl)}
+                          disabled={!receiptUrl}
+                          accessibilityRole="link"
+                          accessibilityLabel={`Télécharger le reçu ${receipt.receiptNumber ?? receipt.transactionReference}`}
+                        >
+                          <MaterialCommunityIcons name="download" size={13} color={colors.primary} />
+                          <Text style={styles.downloadBtnText}>PDF</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ))}
           </View>
         )}
 
@@ -269,15 +309,8 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 16, fontWeight: "700", color: colors.gray700 },
   emptySubtext: { fontSize: 13, color: colors.gray500 },
   errorText: { color: colors.error, fontSize: 13, textAlign: "center" },
-  timelineCard: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xxl, padding: 16, gap: 4 },
-  timelineTitle: { fontSize: 15, fontWeight: "900", color: colors.gray900, marginBottom: 8 },
-  timelineRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 54, position: "relative" },
-  timelineDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.primary, borderWidth: 3, borderColor: colors.primarySoft },
-  timelineDotPaid: { backgroundColor: colors.success, borderColor: colors.successSoft },
-  timelineLine: { position: "absolute", left: 6, top: 33, width: 2, height: 32, backgroundColor: colors.cardBorder },
-  timelineMain: { fontSize: 13, fontWeight: "800", color: colors.gray900 },
-  timelineSub: { marginTop: 2, fontSize: 11, color: colors.gray500 },
-  timelineAmount: { fontSize: 13, fontWeight: "900", color: colors.gray900 },
+  payNowButton: { minHeight: 48, borderRadius: radii.lg, backgroundColor: colors.primary, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9 },
+  payNowText: { flex: 1, color: colors.white, fontSize: 14, fontWeight: "900", textAlign: "center" },
   txRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -303,6 +336,12 @@ const styles = StyleSheet.create({
   receiptsTitle: { marginTop: 3, fontSize: 16, color: colors.gray900, fontWeight: "900" },
   receiptsCount: { minWidth: 34, height: 34, borderRadius: 17, backgroundColor: colors.primaryBg, alignItems: "center", justifyContent: "center" },
   receiptsCountText: { color: colors.primary, fontWeight: "900", fontSize: 13 },
+  articleGroup: { marginTop: 6, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xl, overflow: "hidden" },
+  articleGroupHeader: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, backgroundColor: colors.surface },
+  articleGroupIcon: { width: 36, height: 36, borderRadius: radii.md, backgroundColor: colors.primaryBg, alignItems: "center", justifyContent: "center" },
+  articleGroupTitle: { fontSize: 13, fontWeight: "900", color: colors.gray900 },
+  articleGroupMeta: { marginTop: 2, fontSize: 10, color: colors.gray500, fontWeight: "700" },
+  articleGroupTotal: { fontSize: 13, fontWeight: "900", color: colors.success },
   receiptRow: { flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: 1, borderTopColor: colors.cardBorder, paddingTop: 12, marginTop: 2 },
   receiptIcon: { width: 42, height: 42, borderRadius: radii.lg, backgroundColor: colors.primaryBg, alignItems: "center", justifyContent: "center" },
   receiptInfo: { flex: 1, gap: 2 },
@@ -312,6 +351,7 @@ const styles = StyleSheet.create({
   receiptRight: { alignItems: "flex-end", gap: 6 },
   receiptAmount: { fontSize: 13, fontWeight: "900", color: colors.gray900 },
   downloadBtn: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.primaryBg, borderRadius: radii.sm, paddingHorizontal: 8, paddingVertical: 5 },
+  downloadBtnDisabled: { opacity: 0.4 },
   downloadBtnText: { color: colors.primary, fontSize: 10, fontWeight: "900" },
   sectionTitle: { fontSize: 11, color: colors.gray500, fontWeight: "900", textTransform: "uppercase", marginTop: 6 },
 });

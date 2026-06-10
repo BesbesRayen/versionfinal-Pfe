@@ -5,15 +5,16 @@ import com.creaditn.creaditnbackend.entity.InstallmentStatus;
 import com.creaditn.creaditnbackend.entity.NotificationType;
 import com.creaditn.creaditnbackend.entity.Payment;
 import com.creaditn.creaditnbackend.entity.User;
-import com.creaditn.creaditnbackend.entity.UserWallet;
+import com.creaditn.creaditnbackend.exception.BadRequestException;
 import com.creaditn.creaditnbackend.repository.InstallmentRepository;
 import com.creaditn.creaditnbackend.repository.PaymentRepository;
 import com.creaditn.creaditnbackend.repository.UserRepository;
-import com.creaditn.creaditnbackend.repository.UserWalletRepository;
 import com.creaditn.creaditnbackend.service.CardService;
 import com.creaditn.creaditnbackend.service.CreadiScoreService;
 import com.creaditn.creaditnbackend.service.NotificationService;
 import com.creaditn.creaditnbackend.service.TransactionService;
+import com.creaditn.creaditnbackend.service.WalletService;
+import com.creaditn.creaditnbackend.service.WalletRechargeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -35,11 +36,12 @@ public class AutopayScheduler {
     private final InstallmentRepository installmentRepository;
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
-    private final UserWalletRepository userWalletRepository;
+    private final WalletService walletService;
     private final CardService cardService;
     private final NotificationService notificationService;
     private final TransactionService transactionService;
     private final CreadiScoreService creadiScoreService;
+    private final WalletRechargeService walletRechargeService;
 
     /**
      * Runs every day at 08:00 AM.
@@ -66,6 +68,12 @@ public class AutopayScheduler {
         log.info("[AutopayScheduler] Running autopay job for due date {}...", processingDate);
         AtomicInteger paidCount = new AtomicInteger(0);
 
+        if (targetUserId == null) {
+            walletRechargeService.rechargeAllThrough(processingDate);
+        } else {
+            walletRechargeService.rechargeThrough(targetUserId, processingDate);
+        }
+
         List<Installment> dueInstallments = installmentRepository
                 .findByStatusInAndDueDateLessThanEqual(
                         List.of(InstallmentStatus.PENDING, InstallmentStatus.OVERDUE),
@@ -85,27 +93,33 @@ public class AutopayScheduler {
                 notificationService.sendNotification(userId,
                         "Autopay Failed",
                         "Add an active default payment card to auto-pay installment due on " + installment.getDueDate(),
-                        NotificationType.PAYMENT_REMINDER);
+                        NotificationType.PAYMENT_FAILED);
                 log.warn("[AutopayScheduler] User {} has no active default card for installment {}", userId, installment.getId());
                 continue;
             }
 
             BigDecimal penalty = installment.getPenalty() != null ? installment.getPenalty() : BigDecimal.ZERO;
             BigDecimal total = installment.getAmount().add(penalty);
-            UserWallet wallet = userWalletRepository.findByUserId(userId)
-                    .orElseGet(() -> UserWallet.builder()
-                            .userId(userId)
-                            .balance(BigDecimal.ZERO)
-                            .build());
-
-            // The wallet is a hidden simulated settlement account. For autopay,
-            // an active default card authorizes topping it up before deduction.
-            if (wallet.getBalance() == null || wallet.getBalance().compareTo(total) < 0) {
-                wallet.setBalance(total);
+            try {
+                walletService.debit(userId, total);
+            } catch (BadRequestException ex) {
+                notificationService.sendNotification(userId,
+                        "Autopay Failed",
+                        "Insufficient wallet balance for installment due on " + installment.getDueDate()
+                                + ". Required: " + total + " TND",
+                        NotificationType.PAYMENT_FAILED);
+                transactionService.record(
+                        userId,
+                        total,
+                        "PAYMENT",
+                        "FAILED",
+                        "Autopay failed - insufficient wallet balance",
+                        "AUTO-FAILED-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase()
+                );
+                log.warn("[AutopayScheduler] Insufficient wallet balance for user {} and installment {}",
+                        userId, installment.getId());
+                continue;
             }
-
-            wallet.setBalance(wallet.getBalance().subtract(total));
-            userWalletRepository.save(wallet);
 
             installment.setStatus(InstallmentStatus.PAID);
             installment.setPaidDate(LocalDateTime.now());

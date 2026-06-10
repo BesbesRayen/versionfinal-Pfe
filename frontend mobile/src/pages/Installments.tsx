@@ -1,9 +1,10 @@
 ﻿import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Fragment } from "react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import MobileLayout from "@/components/MobileLayout";
 import BottomNav from "@/components/BottomNav";
-import { API_BASE_URL, getCards, getMyInstallments, Installment, payAllInstallments, payInstallment } from "@/lib/api";
+import { API_BASE_URL, getCards, getMyInstallments, Installment, Payment, payAllInstallments, payCreditInstallments, payInstallment } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { colors, radii } from "@/lib/theme";
@@ -11,6 +12,11 @@ import { colors, radii } from "@/lib/theme";
 const toMoney = (amount: number) => `${amount.toFixed(2)} DT`;
 const toPrettyDate = (dateIso: string) =>
   new Date(dateIso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+
+type PendingPayment =
+  | { kind: "installment"; installment: Installment }
+  | { kind: "group"; creditId: number; items: Installment[] }
+  | { kind: "all" };
 
 const Installments = () => {
   const { user, triggerCreditSync, creditSyncVersion } = useAuth();
@@ -24,8 +30,10 @@ const Installments = () => {
   const [hasCard, setHasCard] = useState<boolean>(true);
   const [showNoCardModal, setShowNoCardModal] = useState(false);
   const [payStatus, setPayStatus] = useState<"processing" | "success" | "failed" | null>(null);
-  const [lastPaymentId, setLastPaymentId] = useState<number | null>(null);
+  const [lastReceiptUrl, setLastReceiptUrl] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+  const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
+  const [paymentPassword, setPaymentPassword] = useState("");
 
   const toggleGroup = (creditId: number) =>
     setExpandedGroups((prev) => {
@@ -42,13 +50,15 @@ const Installments = () => {
     try {
       const [data, cards] = await Promise.all([
         getMyInstallments(user.userId),
-        getCards(user.userId).catch(() => []),
+        getCards(user.userId).catch(() => undefined),
       ]);
       setInstallments(data);
-      setHasCard(cards.length > 0);
-      // auto-expand all groups on first load
+      if (cards !== undefined) setHasCard(cards.length > 0);
+      // Keep actionable groups open and completed groups collapsed.
       const ids = new Set<number>();
-      data.forEach((i) => ids.add(i.creditRequestId));
+      data
+        .filter((item) => item.status !== "PAID")
+        .forEach((item) => ids.add(item.creditRequestId));
       setExpandedGroups(ids);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Impossible de charger les échéances.");
@@ -73,20 +83,38 @@ const Installments = () => {
     if (!groups.has(inst.creditRequestId)) groups.set(inst.creditRequestId, []);
     groups.get(inst.creditRequestId)!.push(inst);
   }
-  const openSuccess = (paymentId: number) => {
-    setLastPaymentId(paymentId);
+  const sortedGroups = Array.from(groups.entries()).sort(([, left], [, right]) => {
+    const leftActive = left.some((item) => item.status !== "PAID");
+    const rightActive = right.some((item) => item.status !== "PAID");
+    if (leftActive !== rightActive) return leftActive ? -1 : 1;
+
+    const leftOverdue = left.some((item) => item.status === "OVERDUE");
+    const rightOverdue = right.some((item) => item.status === "OVERDUE");
+    if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+
+    const leftDate = Math.min(...left.map((item) => new Date(item.dueDate).getTime()));
+    const rightDate = Math.min(...right.map((item) => new Date(item.dueDate).getTime()));
+    return leftActive ? leftDate - rightDate : rightDate - leftDate;
+  });
+  const activeGroupCount = sortedGroups.filter(([, items]) =>
+    items.some((item) => item.status !== "PAID"),
+  ).length;
+  const openSuccess = (payment?: Payment) => {
+    setLastReceiptUrl(payment?.receiptDownloadUrl
+      ? `${API_BASE_URL}${payment.receiptDownloadUrl}`
+      : null);
     setPayStatus("success");
   };
 
-  const handlePayInstallment = async (installment: Installment) => {
+  const handlePayInstallment = async (installment: Installment, password: string) => {
     if (!user) return;
     if (!hasCard) { setShowNoCardModal(true); return; }
     setPayingId(installment.id);
     setErrorMessage("");
     setPayStatus("processing");
     try {
-      const paid = await payInstallment(user.userId, installment.id, installment.amount + (installment.penalty ?? 0));
-      openSuccess(paid.id);
+      const paid = await payInstallment(user.userId, installment.id, installment.amount + (installment.penalty ?? 0), password);
+      openSuccess(paid);
       await loadInstallments();
       triggerCreditSync();
     } catch (error) {
@@ -97,7 +125,7 @@ const Installments = () => {
     }
   };
 
-  const handlePayGroup = async (creditId: number, items: Installment[]) => {
+  const handlePayGroup = async (creditId: number, items: Installment[], password: string) => {
     if (!user) return;
     if (!hasCard) { setShowNoCardModal(true); return; }
     const unpaid = items.filter((i) => i.status !== "PAID");
@@ -106,12 +134,8 @@ const Installments = () => {
     setErrorMessage("");
     setPayStatus("processing");
     try {
-      let lastId: number | null = null;
-      for (const inst of unpaid) {
-        const paid = await payInstallment(user.userId, inst.id, inst.amount + (inst.penalty ?? 0));
-        lastId = paid.id;
-      }
-      if (lastId) openSuccess(lastId);
+      await payCreditInstallments(user.userId, creditId, password);
+      openSuccess();
       await loadInstallments();
       triggerCreditSync();
     } catch (error) {
@@ -122,16 +146,15 @@ const Installments = () => {
     }
   };
 
-  const handlePayAll = async () => {
+  const handlePayAll = async (password: string) => {
     if (!user) return;
     if (!hasCard) { setShowNoCardModal(true); return; }
     setPayingAll(true);
     setErrorMessage("");
     setPayStatus("processing");
     try {
-      await payAllInstallments(user.userId);
-      setLastPaymentId(null);
-      setPayStatus("success");
+      await payAllInstallments(user.userId, password);
+      openSuccess();
       await loadInstallments();
       triggerCreditSync();
     } catch (error) {
@@ -143,6 +166,31 @@ const Installments = () => {
   };
 
   const isBusy = payingId !== null || payingGroupId !== null || payingAll;
+
+  const requestPayment = (payment: PendingPayment) => {
+    if (!hasCard) {
+      setShowNoCardModal(true);
+      return;
+    }
+    setPaymentPassword("");
+    setPendingPayment(payment);
+  };
+
+  const confirmPayment = async () => {
+    if (!pendingPayment || !paymentPassword.trim()) return;
+    const action = pendingPayment;
+    const password = paymentPassword;
+    setPendingPayment(null);
+    setPaymentPassword("");
+
+    if (action.kind === "installment") {
+      await handlePayInstallment(action.installment, password);
+    } else if (action.kind === "group") {
+      await handlePayGroup(action.creditId, action.items, password);
+    } else {
+      await handlePayAll(password);
+    }
+  };
 
   if (!user) {
     return (
@@ -214,7 +262,7 @@ const Installments = () => {
             />
             <View style={{ flex: 1 }}>
               <Text style={styles.nextBannerLabel}>
-                {nextInstallment.status === "OVERDUE" ? "⚠ Échéance en retard" : "Prochaine échéance"}
+                {nextInstallment.status === "OVERDUE" ? "Échéance en retard" : "Prochaine échéance"}
               </Text>
               <Text style={styles.nextBannerDate}>{toPrettyDate(nextInstallment.dueDate)}</Text>
             </View>
@@ -223,7 +271,21 @@ const Installments = () => {
             </Text>
           </View>
         )}
-        {Array.from(groups.entries()).map(([creditId, items]) => {
+        {!loading && totalDebt > 0 && (
+          <Pressable
+            style={[styles.globalPayBtn, (payingAll || isBusy) && styles.globalPayBtnDisabled]}
+            onPress={() => requestPayment({ kind: "all" })}
+            disabled={payingAll || isBusy}
+            accessibilityRole="button"
+            accessibilityLabel={`Régler toutes les échéances, ${toMoney(totalDebt)}`}
+          >
+            <MaterialCommunityIcons name="check-all" size={18} color={colors.white} />
+            <Text style={styles.globalPayBtnText}>
+              {payingAll ? "Paiement en cours..." : `Tout régler — ${toMoney(totalDebt)}`}
+            </Text>
+          </Pressable>
+        )}
+        {sortedGroups.map(([creditId, items], groupIndex) => {
           const first = items[0];
           const label = first.productName ?? `Crédit #${creditId}`;
           const groupPaid = items.filter((i) => i.status === "PAID").length;
@@ -238,8 +300,22 @@ const Installments = () => {
           const isExpanded = expandedGroups.has(creditId);
           const isPayingThisGroup = payingGroupId === creditId;
           const unpaid = items.filter((i) => i.status !== "PAID");
+          const chronologicalItems = [...items].sort(
+            (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+          );
+          const orderedItems = [
+            ...chronologicalItems.filter((item) => item.status !== "PAID"),
+            ...chronologicalItems.filter((item) => item.status === "PAID"),
+          ];
 
           return (
+            <Fragment key={creditId}>
+            {groupIndex === 0 && activeGroupCount > 0 && (
+              <Text style={styles.listSectionTitle}>À payer maintenant</Text>
+            )}
+            {groupIndex === activeGroupCount && (
+              <Text style={styles.listSectionTitle}>Articles soldés</Text>
+            )}
             <View key={creditId} style={[
               styles.groupCard,
               groupHasOverdue && styles.groupCardOverdue,
@@ -270,7 +346,7 @@ const Installments = () => {
                     <View style={styles.pillOverdue}><Text style={styles.pillOverdueText}>En retard</Text></View>
                   )}
                   {isFullyPaid && (
-                    <View style={styles.pillPaid}><Text style={styles.pillPaidText}>✓ Soldé</Text></View>
+                    <View style={styles.pillPaid}><Text style={styles.pillPaidText}>Soldé</Text></View>
                   )}
                   <MaterialCommunityIcons
                     name={isExpanded ? "chevron-up" : "chevron-down"}
@@ -294,12 +370,13 @@ const Installments = () => {
               {isExpanded && (
                 <>
                   <View style={styles.groupBody}>
-                    {items.map((inst, i) => {
+                    {orderedItems.map((inst, i) => {
                       const isPaid = inst.status === "PAID";
                       const isOverdue = inst.status === "OVERDUE";
                       const isPayingThis = payingId === inst.id;
                       const penalty = inst.penalty ?? 0;
                       const totalAmt = inst.amount + penalty;
+                      const trancheNumber = chronologicalItems.findIndex((item) => item.id === inst.id) + 1;
 
                       return (
                         <View
@@ -314,13 +391,13 @@ const Installments = () => {
                           <View style={[styles.instBubble, isPaid && styles.instBubblePaid, isOverdue && styles.instBubbleOverdue]}>
                             {isPaid
                               ? <MaterialCommunityIcons name="check" size={12} color={colors.success} />
-                              : <Text style={[styles.instBubbleText, isOverdue && { color: colors.error }]}>{i + 1}</Text>
+                              : <Text style={[styles.instBubbleText, isOverdue && { color: colors.error }]}>{trancheNumber}</Text>
                             }
                           </View>
 
                           {/* Info */}
                           <View style={{ flex: 1 }}>
-                            <Text style={styles.instTitle}>Tranche {i + 1}</Text>
+                            <Text style={styles.instTitle}>Tranche {trancheNumber}</Text>
                             <Text style={styles.instDate}>{toPrettyDate(inst.dueDate)}</Text>
                             {penalty > 0 && (
                               <Text style={styles.penaltyTag}>+{toMoney(penalty)} pénalité</Text>
@@ -334,7 +411,7 @@ const Installments = () => {
                             </Text>
                             {isPaid ? (
                               <View style={styles.badgePaid}>
-                              <Text style={styles.badgePaidText}>✓ Payé</Text>
+                              <Text style={styles.badgePaidText}>Payé</Text>
                               </View>
                             ) : (
                               <Pressable
@@ -343,8 +420,10 @@ const Installments = () => {
                                   isOverdue && styles.payBtnOverdue,
                                   (isPayingThis || isBusy) && styles.payBtnDisabled,
                                 ]}
-                                onPress={() => handlePayInstallment(inst)}
+                                onPress={() => requestPayment({ kind: "installment", installment: inst })}
                                 disabled={isBusy}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Payer la tranche ${trancheNumber}, ${toMoney(totalAmt)}`}
                               >
                                 <Text style={styles.payBtnText}>
                                   {isPayingThis ? "..." : isOverdue ? "Régulariser" : "Payer maintenant"}
@@ -366,8 +445,10 @@ const Installments = () => {
                       </View>
                       <Pressable
                         style={[styles.payGroupBtn, (isPayingThisGroup || isBusy) && styles.payGroupBtnDisabled]}
-                        onPress={() => handlePayGroup(creditId, items)}
+                        onPress={() => requestPayment({ kind: "group", creditId, items })}
                         disabled={isPayingThisGroup || isBusy}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Régler toutes les échéances de ${label}, ${toMoney(groupDebt)}`}
                       >
                         {isPayingThisGroup
                           ? <ActivityIndicator size="small" color={colors.white} />
@@ -385,6 +466,7 @@ const Installments = () => {
                 </>
               )}
             </View>
+            </Fragment>
           );
         })}
 
@@ -395,21 +477,38 @@ const Installments = () => {
             <Text style={styles.emptyCardSub}>Vos futures échéances apparaîtront ici.</Text>
           </View>
         )}
-        {!loading && totalDebt > 0 && (
-          <Pressable
-            style={[styles.globalPayBtn, (payingAll || isBusy) && styles.globalPayBtnDisabled]}
-            onPress={handlePayAll}
-            disabled={payingAll || isBusy}
-          >
-            <MaterialCommunityIcons name="check-all" size={18} color={colors.white} />
-            <Text style={styles.globalPayBtnText}>
-              {payingAll ? "Paiement en cours..." : `Tout régler — ${toMoney(totalDebt)}`}
-            </Text>
-          </Pressable>
-        )}
-
       </ScrollView>
       <BottomNav />
+      <Modal visible={pendingPayment !== null} transparent animationType="fade" onRequestClose={() => setPendingPayment(null)}>
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <MaterialCommunityIcons name="shield-lock-outline" size={44} color={colors.primary} />
+            <Text style={styles.modalTitle}>Confirmer le paiement</Text>
+            <Text style={styles.modalSub}>Saisissez le mot de passe de votre compte pour autoriser cette opération.</Text>
+            <TextInput
+              style={styles.passwordInput}
+              value={paymentPassword}
+              onChangeText={setPaymentPassword}
+              placeholder="Mot de passe"
+              placeholderTextColor={colors.gray500}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              onSubmitEditing={() => void confirmPayment()}
+            />
+            <Pressable
+              style={[styles.modalPrimaryBtn, !paymentPassword.trim() && styles.payBtnDisabled]}
+              disabled={!paymentPassword.trim()}
+              onPress={() => void confirmPayment()}
+            >
+              <Text style={styles.modalPrimaryBtnText}>Verifier et payer</Text>
+            </Pressable>
+            <Pressable onPress={() => { setPendingPayment(null); setPaymentPassword(""); }}>
+              <Text style={styles.modalCancelText}>Annuler</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <Modal visible={showNoCardModal} transparent animationType="fade" onRequestClose={() => setShowNoCardModal(false)}>
         <View style={styles.overlay}>
           <View style={styles.modalCard}>
@@ -442,10 +541,12 @@ const Installments = () => {
                 </View>
                 <Text style={[styles.modalTitle, { color: colors.success }]}>Paiement réussi !</Text>
                 <Text style={styles.modalSub}>Votre paiement a été traité avec succès.</Text>
-                {lastPaymentId && (
+                {lastReceiptUrl && (
                   <Pressable
                     style={styles.receiptBtn}
-                    onPress={() => Linking.openURL(`${API_BASE_URL}/api/payments/receipt/${lastPaymentId}`)}
+                    onPress={() => Linking.openURL(lastReceiptUrl)}
+                    accessibilityRole="link"
+                    accessibilityLabel="Télécharger le reçu PDF"
                   >
                     <MaterialCommunityIcons name="file-pdf-box" size={20} color={colors.primary} />
                     <Text style={styles.receiptBtnText}>Télécharger reçu PDF</Text>
@@ -504,6 +605,7 @@ const styles = StyleSheet.create({
   nextBannerAmount: { fontSize: 20, fontWeight: "800", color: colors.primary },
 
   // Group cards
+  listSectionTitle: { marginTop: 6, fontSize: 11, color: colors.gray500, fontWeight: "900", textTransform: "uppercase", letterSpacing: 0.5 },
   groupCard: { backgroundColor: colors.card, borderRadius: 20, borderWidth: 1, borderColor: colors.cardBorder, overflow: "hidden" },
   groupCardOverdue: { borderColor: colors.error + "55" },
   groupCardPaid: { borderColor: colors.success + "44" },
@@ -571,6 +673,7 @@ const styles = StyleSheet.create({
   modalCard: { backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.cardBorder, padding: 28, alignItems: "center", gap: 12, width: "100%", maxWidth: 320 },
   modalTitle: { fontSize: 18, fontWeight: "800", color: colors.gray900, textAlign: "center" },
   modalSub: { fontSize: 13, color: colors.gray500, textAlign: "center", lineHeight: 20 },
+  passwordInput: { width: "100%", borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.lg, backgroundColor: colors.surface, color: colors.gray900, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 },
   modalPrimaryBtn: { backgroundColor: colors.primary, borderRadius: radii.lg, paddingVertical: 13, paddingHorizontal: 24, alignItems: "center", width: "100%" },
   modalPrimaryBtnText: { color: colors.white, fontWeight: "700", fontSize: 14 },
   modalCancelText: { color: colors.gray500, fontSize: 13, fontWeight: "600", marginTop: 4 },

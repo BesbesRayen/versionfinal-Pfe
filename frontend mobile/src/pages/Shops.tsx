@@ -8,12 +8,9 @@ import { getShopCatalogShops, invalidateShopCatalogCache, ShopCatalogShop } from
 import { useAppNavigation } from "@/lib/app-navigation";
 import { colors, radii } from "@/lib/theme";
 
-const filters = ["Tous", "Mode", "Tech", "Maison", "Beaute"];
-
 const Shops = () => {
   const { navigate } = useAppNavigation();
   const [search, setSearch] = useState("");
-  const [activeFilter, setActiveFilter] = useState("Tous");
   const [shops, setShops] = useState<ShopCatalogShop[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,14 +75,6 @@ const Shops = () => {
           )}
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          {filters.map((filter) => (
-            <Pressable key={filter} onPress={() => setActiveFilter(filter)} style={[styles.filterChip, activeFilter === filter && styles.filterChipActive]}>
-              <Text style={[styles.filterText, activeFilter === filter && styles.filterTextActive]}>{filter}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{shops.length}</Text>
@@ -130,11 +119,6 @@ const styles = StyleSheet.create({
   heroIcon: { width: 58, height: 58, borderRadius: 20, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   searchBox: { flexDirection: "row", alignItems: "center", gap: 9, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: radii.xl, paddingHorizontal: 14, minHeight: 52 },
   searchInput: { flex: 1, color: colors.gray900, fontSize: 14, fontWeight: "700" },
-  filterRow: { gap: 8, paddingRight: 20 },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: radii.full, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.cardBorder },
-  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterText: { color: colors.gray600, fontWeight: "900", fontSize: 12 },
-  filterTextActive: { color: colors.white },
   statsRow: { flexDirection: "row", gap: 10 },
   statCard: { flex: 1, backgroundColor: colors.surface, borderRadius: radii.lg, borderWidth: 1, borderColor: colors.cardBorder, padding: 12 },
   statValue: { color: colors.gray900, fontWeight: "900", fontSize: 17 },

@@ -18,8 +18,8 @@ import java.math.BigDecimal;
 public class FinancialProfileRequest {
 
     @NotNull
-    @DecimalMin(value = "100.00", message = "Monthly salary must be between 100 and 5000 DT")
-    @DecimalMax(value = "5000.00", message = "Monthly salary must be between 100 and 5000 DT")
+    @DecimalMin(value = "100.00", message = "Monthly salary must be between 100 and 15000 DT")
+    @DecimalMax(value = "15000.00", message = "Monthly salary must be between 100 and 15000 DT")
     private BigDecimal monthlySalary;
 
     @NotNull

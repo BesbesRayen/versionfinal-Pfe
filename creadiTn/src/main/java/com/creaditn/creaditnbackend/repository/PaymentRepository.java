@@ -8,6 +8,9 @@ import java.util.Optional;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @EntityGraph(attributePaths = {"user", "installment", "installment.creditRequest"})
+    Optional<Payment> findWithReceiptDetailsById(Long id);
+
+    @EntityGraph(attributePaths = {"user", "installment", "installment.creditRequest"})
     List<Payment> findByUserId(Long userId);
 
     @EntityGraph(attributePaths = {"user", "installment", "installment.creditRequest"})

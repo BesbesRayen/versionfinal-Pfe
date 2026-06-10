@@ -55,6 +55,7 @@ public class User {
     private Integer numberOfChildren;
     private Double monthlySalary;
     private Integer paymentScoreModifier;
+    private Integer paymentTrustBonus;
 
     @Column(name = "autopay", nullable = false)
     private Boolean autopay;
@@ -96,6 +97,7 @@ public class User {
         if (kycProvider == null || kycProvider.isBlank()) kycProvider = "LEGACY";
         if (kycFailedAttempts == null) kycFailedAttempts = 0;
         if (paymentScoreModifier == null) paymentScoreModifier = 0;
+        if (paymentTrustBonus == null) paymentTrustBonus = 0;
         if (autopay == null) autopay = false;
         if (accountDeleted == null) accountDeleted = false;
         if (emailVerified == null) emailVerified = false;

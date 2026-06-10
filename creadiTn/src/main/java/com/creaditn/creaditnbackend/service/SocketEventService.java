@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -13,7 +15,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Fires real-time events to the Socket.IO server (socket-server/index.js).
@@ -29,7 +33,7 @@ public class SocketEventService {
     @Value("${app.socket.server-url:http://localhost:3001}")
     private String socketServerUrl;
 
-    @Value("${app.socket.emit-secret:creaditn-socket-secret-2026}")
+    @Value("${app.socket.emit-secret}")
     private String emitSecret;
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
@@ -49,6 +53,25 @@ public class SocketEventService {
     @Async
     public void emitDeleteArticle(Long articleId) {
         emit("delete-article", Map.of("id", articleId));
+    }
+
+    public void emitUserEvent(String event, Long userId, Map<String, Object> data) {
+        Map<String, Object> payload = new HashMap<>(data);
+        payload.put("userId", userId);
+        Runnable emitter = () -> CompletableFuture.runAsync(() -> emit(event, payload));
+
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+                && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    emitter.run();
+                }
+            });
+            return;
+        }
+
+        emitter.run();
     }
 
     private void emit(String event, Object data) {

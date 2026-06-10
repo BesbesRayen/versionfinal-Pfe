@@ -4,5 +4,6 @@ public enum ScoreLevel {
     EXCELLENT,
     GOOD,
     MEDIUM,
-    HIGH_RISK
+    HIGH_RISK,
+    CRITICAL
 }

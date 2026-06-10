@@ -478,7 +478,7 @@ export interface AdminCreditNotification {
   id: number;
   title: string;
   message: string;
-  type: 'NEW_CREDIT_PURCHASE' | 'INVOICE_GENERATED';
+  type: 'NEW_CREDIT_PURCHASE' | 'INVOICE_GENERATED' | 'INSTALLMENT_OVERDUE';
   read: boolean;
   orderId?: number;
   transactionId?: string;

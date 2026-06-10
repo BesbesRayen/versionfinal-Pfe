@@ -9,7 +9,7 @@ import com.creaditn.creaditnbackend.exception.ResourceNotFoundException;
 import com.creaditn.creaditnbackend.repository.InstallmentRepository;
 import com.creaditn.creaditnbackend.repository.PaymentRepository;
 import com.creaditn.creaditnbackend.repository.UserRepository;
-import com.creaditn.creaditnbackend.repository.UserWalletRepository;
+import com.creaditn.creaditnbackend.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,9 +30,10 @@ public class PaymentService {
     private final NotificationService notificationService;
     private final CardService cardService;
     private final CreadiScoreService creadiScoreService;
-    private final UserWalletRepository userWalletRepository;
+    private final WalletService walletService;
     private final TransactionService transactionService;
     private final InstallmentRepository installmentRepository;
+    private final JwtUtil jwtUtil;
 
     @Transactional
     public PaymentDto makePayment(Long userId, PaymentRequest request) {
@@ -57,20 +58,11 @@ public class PaymentService {
         if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) == 0) {
             request.setAmount(expectedAmount);
         }
-        if (request.getAmount().compareTo(expectedAmount) < 0) {
-            throw new BadRequestException("Payment amount must cover installment and penalty");
+        if (request.getAmount().compareTo(expectedAmount) != 0) {
+            throw new BadRequestException("Payment amount must exactly match installment and penalty");
         }
 
-        // Wallet balance check — replaces random simulation
-        UserWallet wallet = userWalletRepository.findByUserId(userId)
-                .orElseGet(() -> UserWallet.builder()
-                        .userId(userId)
-                        .balance(BigDecimal.ZERO)
-                        .build());
-
-        if (wallet.getBalance() == null || wallet.getBalance().compareTo(request.getAmount()) < 0) {
-            wallet.setBalance(request.getAmount());
-        }
+        walletService.debit(userId, request.getAmount());
 
         String txRef = "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
 
@@ -82,18 +74,16 @@ public class PaymentService {
                 .paymentMethod(request.getPaymentMethod())
                 .build();
 
+        boolean paidLate = isLatePayment(installment);
+        applyTrustImpact(user, installment, paidLate);
+
         paymentRepository.save(payment);
         installmentService.markAsPaid(installment.getId());
-
-        // Deduct from wallet
-        wallet.setBalance(wallet.getBalance().subtract(request.getAmount()));
-        userWalletRepository.save(wallet);
 
         // Record transaction
         transactionService.record(userId, request.getAmount(), "PAYMENT", "SUCCESS",
                 "Installment payment", txRef);
 
-        applyBehaviorImpact(user, installment);
         creadiScoreService.calculateScore(userId);
 
         notificationService.sendNotification(userId,
@@ -117,18 +107,33 @@ public class PaymentService {
 
     @Transactional
     public PayAllResponse collectOutstandingInstallmentsForAdmin(Long userId) {
-        return payAllInstallmentsInternal(userId, "ADMIN_CARD", "ADMIN_COLLECTION",
+        return payAllInstallmentsInternal(userId, null, "ADMIN_CARD", "ADMIN_COLLECTION",
                 "Admin debt collection", "Outstanding installments collected by admin");
     }
 
-        @Transactional
-        public PayAllResponse payAllInstallments(Long userId) {
-        return payAllInstallmentsInternal(userId, "CARD", "PAYMENT",
+    @Transactional
+    public PayAllResponse payAllInstallments(Long userId) {
+        return payAllInstallmentsInternal(userId, null, "CARD", "PAYMENT",
                 "Bulk installment payment", "All your due installments have been paid successfully.");
+    }
+
+    @Transactional
+    public PayAllResponse payCreditInstallments(Long userId, Long creditRequestId) {
+        List<Installment> installments = installmentRepository.findByCreditRequestId(creditRequestId)
+                .stream()
+                .filter(installment -> installment.getCreditRequest().getUser().getId().equals(userId))
+                .filter(installment -> installment.getStatus() != InstallmentStatus.PAID)
+                .toList();
+        if (installments.isEmpty()) {
+            throw new ResourceNotFoundException("No unpaid installments found for this credit");
         }
+        return payAllInstallmentsInternal(userId, installments, "CARD", "PAYMENT",
+                "Credit installment payment", "All installments for this purchase have been paid successfully.");
+    }
 
     private PayAllResponse payAllInstallmentsInternal(
             Long userId,
+            List<Installment> requestedInstallments,
             String paymentMethod,
             String transactionType,
             String transactionDescription,
@@ -137,7 +142,9 @@ public class PaymentService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        List<Installment> unpaidInstallments = installmentService.getUserUnpaidInstallments(userId);
+        List<Installment> unpaidInstallments = requestedInstallments == null
+                ? installmentService.getUserUnpaidInstallments(userId)
+                : requestedInstallments;
         if (unpaidInstallments.isEmpty()) {
             return PayAllResponse.builder()
                 .paidInstallments(0)
@@ -153,15 +160,8 @@ public class PaymentService {
 
         cardService.getDefaultActiveCard(userId);
 
-        // Wallet balance check for pay-all
-        UserWallet wallet = userWalletRepository.findByUserId(userId)
-                .orElseGet(() -> UserWallet.builder()
-                        .userId(userId)
-                        .balance(BigDecimal.ZERO)
-                        .build());
-
-        if (wallet.getBalance() == null || wallet.getBalance().compareTo(debtBefore) < 0) {
-            wallet.setBalance(debtBefore);
+        if (!"ADMIN_COLLECTION".equals(transactionType)) {
+            walletService.debit(userId, debtBefore);
         }
 
         List<Payment> payments = unpaidInstallments.stream()
@@ -174,26 +174,16 @@ public class PaymentService {
                 .build())
             .toList();
 
+        unpaidInstallments.forEach(installment -> applyTrustImpact(user, installment, isLatePayment(installment)));
+
         paymentRepository.saveAll(payments);
         int paidCount = installmentService.markAllAsPaid(unpaidInstallments);
-
-        // Deduct total from wallet
-        wallet.setBalance(wallet.getBalance().subtract(debtBefore));
-        userWalletRepository.save(wallet);
 
         // Record bulk transaction
         String bulkRef = "TXN-ALL-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         transactionService.record(userId, debtBefore, transactionType, "SUCCESS",
                 transactionDescription + " ("+paidCount+" installments)", bulkRef);
 
-        // Bulk payment is treated as stable behavior if none are overdue.
-        boolean hasOverdue = unpaidInstallments.stream().anyMatch(i -> i.getStatus() == InstallmentStatus.OVERDUE);
-        if (hasOverdue) {
-            user.setPaymentScoreModifier((user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier()) - 15);
-        } else {
-            user.setPaymentScoreModifier((user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier()) + 10);
-        }
-        userRepository.save(user);
         creadiScoreService.calculateScore(userId);
 
         notificationService.sendNotification(
@@ -212,9 +202,12 @@ public class PaymentService {
     }
 
     @Transactional(readOnly = true)
-    public PaymentDto getPaymentByReference(String reference) {
+    public PaymentDto getPaymentByReference(String reference, Long userId) {
         Payment payment = paymentRepository.findByTransactionReference(reference)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
+        if (!payment.getUser().getId().equals(userId)) {
+            throw new ResourceNotFoundException("Payment not found");
+        }
         return mapToDto(payment);
     }
 
@@ -231,7 +224,8 @@ public class PaymentService {
                 .paidAt(p.getPaidAt())
                 .productName(creditRequest.getProductName() == null ? "Financement CreadiTN" : creditRequest.getProductName())
                 .receiptNumber(receiptNumber(p))
-                .receiptDownloadUrl("/api/payments/receipt/" + p.getId())
+                .receiptDownloadUrl("/api/payments/receipt/" + p.getId()
+                        + "?token=" + jwtUtil.generateReceiptToken(p.getId(), p.getUser().getId()))
                 .status("PAID")
                 .installmentNumber(resolveInstallmentNumber(installment))
                 .automaticPayment(isAutomaticPayment(p.getPaymentMethod()))
@@ -266,17 +260,25 @@ public class PaymentService {
         return 1;
     }
 
-    private void applyBehaviorImpact(User user, Installment installment) {
-        int modifier = user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier();
-        LocalDate today = LocalDate.now();
+    private boolean isLatePayment(Installment installment) {
+        return installment.getStatus() == InstallmentStatus.OVERDUE || installment.getDueDate().isBefore(LocalDate.now());
+    }
 
-        if (installment.getStatus() == InstallmentStatus.OVERDUE || installment.getDueDate().isBefore(today)) {
-            modifier -= 15;
+    private void applyTrustImpact(User user, Installment installment, boolean late) {
+        int trustBonus = user.getPaymentTrustBonus() == null ? 0 : user.getPaymentTrustBonus();
+        if (late) {
+            if (!Boolean.TRUE.equals(installment.getLatePenaltyApplied())) {
+                trustBonus -= CreadiScoreConstants.PAYMENT_TRUST_LATE_MALUS;
+                installment.setLatePenaltyApplied(true);
+            }
         } else {
-            modifier += 10;
+            trustBonus += CreadiScoreConstants.PAYMENT_TRUST_ON_TIME_BONUS;
         }
 
-        user.setPaymentScoreModifier(Math.max(-200, Math.min(200, modifier)));
+        user.setPaymentTrustBonus(Math.max(
+                CreadiScoreConstants.PAYMENT_TRUST_BONUS_MIN,
+                Math.min(CreadiScoreConstants.PAYMENT_TRUST_BONUS_MAX, trustBonus)
+        ));
         userRepository.save(user);
     }
 }

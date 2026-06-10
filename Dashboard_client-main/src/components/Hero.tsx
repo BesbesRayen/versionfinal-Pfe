@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 function scrollToDemo() {
-  const el = document.getElementById('how-it-works') ?? document.getElementById('features');
+  const el = document.getElementById('mobile-app-download');
   el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 

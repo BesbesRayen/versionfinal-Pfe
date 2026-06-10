@@ -9,6 +9,12 @@ import java.math.BigDecimal;
 @NoArgsConstructor @AllArgsConstructor
 public class PaymentRequest {
 
+    public PaymentRequest(Long installmentId, BigDecimal amount, String paymentMethod) {
+        this.installmentId = installmentId;
+        this.amount = amount;
+        this.paymentMethod = paymentMethod;
+    }
+
     @NotNull
     private Long installmentId;
 
@@ -16,4 +22,6 @@ public class PaymentRequest {
     private BigDecimal amount;
 
     private String paymentMethod;
+
+    private String password;
 }

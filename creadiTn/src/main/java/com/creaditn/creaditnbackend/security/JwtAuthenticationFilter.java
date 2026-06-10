@@ -38,6 +38,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (jwtUtil.validateToken(token) && SecurityContextHolder.getContext().getAuthentication() == null) {
             String email = jwtUtil.getEmailFromToken(token);
+            Long authenticatedUserId = jwtUtil.getUserIdFromToken(token);
+            String requestedUserId = request.getParameter("userId");
+
+            if (requestedUserId != null && !matchesAuthenticatedUser(requestedUserId, authenticatedUserId)) {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"message\":\"Access denied for this account\"}");
+                return;
+            }
+
+            request.setAttribute("authenticatedUserId", authenticatedUserId);
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             email,
@@ -49,5 +60,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean matchesAuthenticatedUser(String requestedUserId, Long authenticatedUserId) {
+        try {
+            return authenticatedUserId.equals(Long.valueOf(requestedUserId));
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
     }
 }

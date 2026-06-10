@@ -9,13 +9,35 @@ import {
   Shield, Zap, ChevronRight, RefreshCw, Smartphone,
   CheckCircle, Clock, AlertCircle, Trophy, Lock,
   Star, Sparkles, Activity, Send, FileText, Download,
+  X,
 } from 'lucide-react';
 import MobileAccessModal from '@/components/MobileAccessModal';
-import QRDownloadCard from '@/components/QRDownloadCard';
 import { useSocket } from '@/lib/useSocket';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8082';
 const POLL_INTERVAL = 30_000;
+
+function playNotificationSound() {
+  try {
+    const AudioContextClass = window.AudioContext
+      || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.setValueAtTime(760, context.currentTime);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.2);
+    oscillator.addEventListener('ended', () => void context.close());
+  } catch {
+    // Browsers can block audio until the first user interaction.
+  }
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface UserProfile {
@@ -27,6 +49,12 @@ interface UserProfile {
   creditScore?: number;
   walletBalance?: number;
   creditLimit?: number;
+  buyingPowerLimit?: number;
+  outstandingBalance?: number;
+  availableCredit?: number;
+  usedPercent?: number;
+  nextInstallmentAmount?: number;
+  nextInstallmentDate?: string | null;
   kycStatus?: string;
   financialScore?: number;
 }
@@ -53,6 +81,7 @@ interface Notification {
   id: number;
   title: string;
   message: string;
+  type: string;
   read: boolean;
   createdAt: string;
 }
@@ -83,15 +112,32 @@ interface CreditPlan {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function scoreLevel(s: number) {
-  if (s >= 750) return { label: 'Excellent', tier: 'Platinum', color: '#8b5cf6', badge: 'badge-purple' };
-  if (s >= 650) return { label: 'Bon',       tier: 'Gold',     color: '#f59e0b', badge: 'badge-amber' };
-  if (s >= 550) return { label: 'Moyen',     tier: 'Silver',   color: '#6366f1', badge: 'badge-blue' };
-  return             { label: 'Faible',      tier: 'Bronze',   color: '#f97316', badge: 'badge-red' };
+  if (s >= 850) return { label: 'Excellent', tier: 'Gold', color: '#22c55e', badge: 'badge-purple' };
+  if (s >= 700) return { label: 'Bon',       tier: 'Silver', color: '#8b5cf6', badge: 'badge-blue' };
+  if (s >= 550) return { label: 'Moyen',     tier: 'Bronze', color: '#f59e0b', badge: 'badge-amber' };
+  if (s >= 300) return { label: 'Risque eleve', tier: 'A surveiller', color: '#f97316', badge: 'badge-red' };
+  return             { label: 'Critique',    tier: 'Bloque', color: '#ef4444', badge: 'badge-red' };
+}
+
+function notificationTone(type: string) {
+  if (type === 'PAYMENT_CONFIRMED') {
+    return { dot: 'bg-emerald-400', border: 'border-emerald-500/25', background: 'bg-emerald-500/10' };
+  }
+  if (type === 'PAYMENT_FAILED') {
+    return { dot: 'bg-rose-400', border: 'border-rose-500/25', background: 'bg-rose-500/10' };
+  }
+  if (type === 'PAYMENT_REFUNDED') {
+    return { dot: 'bg-sky-400', border: 'border-sky-500/25', background: 'bg-sky-500/10' };
+  }
+  if (type === 'PAYMENT_PENDING' || type === 'PAYMENT_REMINDER') {
+    return { dot: 'bg-amber-400', border: 'border-amber-500/25', background: 'bg-amber-500/10' };
+  }
+  return { dot: 'bg-indigo-400', border: 'border-indigo-500/20', background: 'bg-indigo-500/10' };
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 function ScoreRing({ score, verified }: { score: number; verified: boolean }) {
-  const max = 850;
+  const max = 1000;
   const r = 56;
   const circ = 2 * Math.PI * r;
   const offset = verified ? circ * (1 - Math.min(score / max, 1)) : circ;
@@ -199,12 +245,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [mobileModal, setMobileModal] = useState({ open: false, link: '', name: '' });
   const [renderNow] = useState(() => Date.now());
   const tokenRef = useRef<string | null>(null);
+  const lastShownNotificationIdRef = useRef<number | null>(null);
 
   const openMobileAccess = (action: string, name = '') => {
-    setMobileModal({ open: true, link: `creditn://${action}`, name });
+    setMobileModal({ open: true, link: `credittn://${action}`, name });
   };
 
   const fetchUserData = useCallback(async (token: string) => {
@@ -254,7 +303,13 @@ export default function DashboardPage() {
       setUser((prev) => prev ? {
         ...prev,
         creditScore: data.creditScore ?? prev.creditScore,
-        creditLimit: data.totalLimit ?? prev.creditLimit,
+        creditLimit: data.buyingPowerLimit ?? data.totalLimit ?? prev.creditLimit,
+        buyingPowerLimit: data.buyingPowerLimit ?? data.totalLimit ?? prev.buyingPowerLimit,
+        outstandingBalance: data.outstandingBalance ?? data.usedCredit ?? prev.outstandingBalance,
+        availableCredit: data.availableCredit ?? prev.availableCredit,
+        usedPercent: data.usedPercent ?? prev.usedPercent,
+        nextInstallmentAmount: data.nextInstallmentAmount ?? prev.nextInstallmentAmount,
+        nextInstallmentDate: data.nextInstallmentDate ?? prev.nextInstallmentDate,
         walletBalance: data.availableCredit ?? prev.walletBalance,
       } : prev);
     }
@@ -327,6 +382,7 @@ export default function DashboardPage() {
       try {
         setUser(JSON.parse(storedUser));
         tokenRef.current = storedToken;
+        setAuthToken(storedToken);
       } catch {
         redirectToLogin();
       }
@@ -367,13 +423,57 @@ export default function DashboardPage() {
   }, [fetchUserData]);
 
   // Real-time sync via Socket.IO (supplements 30s polling)
-  const { connected: socketConnected, lastEvent } = useSocket(user?.userId ?? user?.id);
+  const { connected: socketConnected, lastEvent, reconnecting: socketReconnecting } = useSocket(
+    user?.userId ?? user?.id,
+    authToken,
+  );
   useEffect(() => {
     if (!lastEvent || !tokenRef.current) return;
+    if (lastEvent.type === 'notification') {
+      const incoming = lastEvent.data as unknown as Notification;
+      if (incoming.id) {
+        setNotifications((current) => [
+          incoming,
+          ...current.filter((notification) => notification.id !== incoming.id),
+        ]);
+        setNotificationsOpen(true);
+        playNotificationSound();
+      }
+    } else if (lastEvent.type === 'notification-read') {
+      const id = Number(lastEvent.data.id);
+      setNotifications((current) => current.map((notification) => (
+        notification.id === id ? { ...notification, read: true } : notification
+      )));
+    } else if (lastEvent.type === 'notifications-read-all') {
+      setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+    }
     // Refresh data on any user-scoped real-time event
     setSyncing(true);
     fetchUserData(tokenRef.current).finally(() => setSyncing(false));
   }, [lastEvent, fetchUserData]);
+
+  useEffect(() => {
+    const latestUnread = notifications
+      .filter((notification) => !notification.read)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    if (!latestUnread || latestUnread.id === lastShownNotificationIdRef.current) return;
+
+    lastShownNotificationIdRef.current = latestUnread.id;
+    setNotificationsOpen(true);
+  }, [notifications]);
+
+  useEffect(() => {
+    const openNotifications = () => setNotificationsOpen(true);
+    window.addEventListener('credittn:open-notifications', openNotifications);
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('notifications') === 'open') {
+      setNotificationsOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    return () => window.removeEventListener('credittn:open-notifications', openNotifications);
+  }, []);
 
   const manualSync = () => {
     if (!tokenRef.current || syncing) return;
@@ -381,22 +481,58 @@ export default function DashboardPage() {
     fetchUserData(tokenRef.current).finally(() => setSyncing(false));
   };
 
+  const markNotificationRead = async (notificationId: number) => {
+    if (!tokenRef.current) return;
+    setNotifications((current) => current.map((notification) => (
+      notification.id === notificationId ? { ...notification, read: true } : notification
+    )));
+    const response = await fetch(`${API_BASE}/api/notifications/${notificationId}/read`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${tokenRef.current}` },
+    });
+    if (!response.ok) {
+      await fetchUserData(tokenRef.current);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    if (!tokenRef.current || unread === 0) return;
+    setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+    const response = await fetch(`${API_BASE}/api/notifications/read-all`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${tokenRef.current}` },
+    });
+    if (!response.ok) {
+      await fetchUserData(tokenRef.current);
+    }
+  };
+
   const verified = user?.kycStatus === 'VERIFIED';
   const score = verified ? (user?.creditScore ?? 0) : 0;
   const walletBalance = verified ? (user?.walletBalance ?? 0) : null;
-  const creditLimit = verified ? (user?.creditLimit ?? 0) : null;
+  const creditLimit = verified ? (user?.buyingPowerLimit ?? user?.creditLimit ?? 0) : null;
+  const availableCredit = verified ? (user?.availableCredit ?? 0) : null;
+  const outstandingBalance = verified ? (user?.outstandingBalance ?? 0) : null;
+  const usedPercent = verified ? (user?.usedPercent ?? 0) : 0;
   const activeCredits = credits.filter((c) => ['APPROVED', 'ACTIVE', 'PENDING'].includes(c.status));
   const pendingInst = installments
-    .filter((i) => i.status === 'PENDING')
+    .filter((i) => i.status === 'PENDING' || i.status === 'OVERDUE')
     .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
   const unread = notifications.filter((n) => !n.read).length;
   const nextDue = pendingInst[0];
   const lvl = scoreLevel(score);
   const totalReceiptsAmount = receipts.reduce((sum, receipt) => sum + Number(receipt.amount ?? 0), 0);
   const downloadReceipt = (receipt: PaymentReceipt) => {
-    const path = receipt.receiptDownloadUrl ?? `/api/payments/receipt/${receipt.id}`;
-    window.open(`${API_BASE}${path}`, '_blank', 'noopener,noreferrer');
+    if (receipt.receiptDownloadUrl) {
+      window.open(`${API_BASE}${receipt.receiptDownloadUrl}`, '_blank', 'noopener,noreferrer');
+    }
   };
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('credittn:notification-count', {
+      detail: { count: unread },
+    }));
+  }, [unread]);
 
   if (loading) {
     return (
@@ -417,6 +553,61 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#070A12] pt-16">
+      {notificationsOpen && notifications.length > 0 && (
+        <div className="fixed right-4 top-20 z-[100] w-[calc(100%-2rem)] max-w-md rounded-[24px] border border-indigo-400/30 bg-[#111827]/95 p-5 text-white shadow-2xl shadow-black/60 backdrop-blur-xl animate-fadeIn">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500/20">
+                <Bell className="h-5 w-5 text-indigo-300" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-black">Notifications</h2>
+                <p className="text-[11px] font-semibold text-indigo-300">{unread} non lue{unread > 1 ? 's' : ''}</p>
+              </div>
+              {unread > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void markAllNotificationsRead()}
+                  className="rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200 transition-colors hover:bg-indigo-500/20"
+                >
+                  Tout lire
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setNotificationsOpen(false)}
+              aria-label="Fermer les notifications"
+              className="rounded-xl p-2 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="max-h-[60vh] space-y-2.5 overflow-y-auto">
+            {notifications.slice(0, 5).map((notif) => {
+              const tone = notificationTone(notif.type);
+              return (
+                <button
+                  type="button"
+                  key={notif.id}
+                  onClick={() => void markNotificationRead(notif.id)}
+                  className={`flex w-full items-start gap-3 rounded-2xl p-3.5 text-left transition-colors ${!notif.read ? `border ${tone.border} ${tone.background}` : 'bg-white/5 hover:bg-white/10'}`}
+                >
+                  <div className={`mt-2 h-2 w-2 flex-shrink-0 rounded-full ${!notif.read ? tone.dot : 'bg-gray-600'}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-white">{notif.title}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-gray-400">{notif.message}</p>
+                    <p className="mt-1 text-[10px] text-gray-600">
+                      {new Date(notif.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Hero strip */}
       <div className={`relative overflow-hidden border-b border-white/10 ${verified ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700' : 'bg-gradient-to-r from-slate-800 via-slate-900 to-black'} text-white`}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_80%_30%,rgba(25,195,125,0.16),transparent_22%)]" />
@@ -438,15 +629,19 @@ export default function DashboardPage() {
                 <Activity className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
                 {syncing ? 'Sync...' : lastSync ? `Sync ${lastSync.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'Sync'}
               </button>
-              {unread > 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-2xl text-xs font-bold">
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-2xl text-xs font-bold transition-colors"
+                >
                   <Bell className="w-3.5 h-3.5" />
-                  {unread} nouvelle{unread > 1 ? 's' : ''}
-                </div>
+                  {unread > 0 ? `${unread} nouvelle${unread > 1 ? 's' : ''}` : 'Notifications'}
+                </button>
               )}
               <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold ${socketConnected ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-white/60'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-400 animate-pulse' : 'bg-white/40'}`} />
-                {socketConnected ? 'Live' : 'Offline'}
+                {socketConnected ? 'Live' : socketReconnecting ? 'Reconnexion...' : 'Offline'}
               </div>
               <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold ${verified ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'}`}>
                 {verified ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
@@ -457,7 +652,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-7">
+      <div className="mx-auto max-w-[1520px] space-y-7 px-4 py-8 sm:px-6 lg:px-8">
         <VerificationBanner
           kycStatus={user?.kycStatus ?? 'NONE'}
           onVerify={() => openMobileAccess('kyc/start', "Verification d'identite")}
@@ -467,9 +662,11 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger">
           {[
             { label: 'Solde portefeuille', value: walletBalance !== null ? `${walletBalance.toLocaleString('fr-TN')} TND` : '—', icon: Wallet,       color: 'text-indigo-400', bg: 'bg-indigo-500/10', locked: !verified },
-            { label: 'Limite disponible',  value: creditLimit   !== null ? `${creditLimit.toLocaleString('fr-TN')} TND`   : '—', icon: CreditCard,   color: 'text-violet-400', bg: 'bg-violet-500/10', locked: !verified },
+            { label: "Pouvoir d'achat total",  value: creditLimit   !== null ? `${creditLimit.toLocaleString('fr-TN')} TND`   : '—', icon: CreditCard,   color: 'text-violet-400', bg: 'bg-violet-500/10', locked: !verified },
+            { label: 'Disponible',  value: availableCredit !== null ? `${availableCredit.toLocaleString('fr-TN')} TND` : '—', icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-500/10', locked: !verified },
+            { label: 'Utilise',  value: outstandingBalance !== null ? `${outstandingBalance.toLocaleString('fr-TN')} TND (${usedPercent.toFixed(1)}%)` : '—', icon: Activity, color: 'text-amber-400', bg: 'bg-amber-500/10', locked: !verified },
             { label: 'Achats actifs',      value: verified ? String(activeCredits.length) : '—',                                  icon: ShoppingBag,  color: 'text-emerald-400',bg: 'bg-emerald-500/10',locked: false },
-            { label: 'Prochaine echeance', value: nextDue ? new Date(nextDue.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : 'Aucune', icon: CalendarClock, color: nextDue ? 'text-amber-400' : 'text-gray-500', bg: nextDue ? 'bg-amber-500/10' : 'bg-white/5', locked: false },
+            { label: 'Prochaine echeance', value: user?.nextInstallmentAmount ? `${Number(user.nextInstallmentAmount).toLocaleString('fr-TN')} TND` : nextDue ? new Date(nextDue.dueDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : 'Aucune', icon: CalendarClock, color: (user?.nextInstallmentAmount || nextDue) ? 'text-amber-400' : 'text-gray-500', bg: (user?.nextInstallmentAmount || nextDue) ? 'bg-amber-500/10' : 'bg-white/5', locked: false },
           ].map((stat) => (
             <div key={stat.label} className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 card-hover animate-fadeIn">
               <div className="flex items-center justify-between mb-3">
@@ -485,7 +682,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Main grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(300px,0.85fr)_minmax(0,1.75fr)]">
           {/* Credit Score card */}
           <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
             <div className="flex items-center justify-between mb-5">
@@ -530,10 +727,10 @@ export default function DashboardPage() {
                   <div className="flex items-start gap-2">
                     <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
                     <p className="text-xs text-indigo-300 font-medium leading-relaxed">
-                      {score >= 750
+                      {score >= 850
                         ? 'Excellent profil ! Continuez a payer a temps pour maintenir votre score.'
-                        : score >= 650
-                        ? 'Payez 2 mensualites a temps pour atteindre le niveau Platinum.'
+                        : score >= 700
+                        ? 'Payez vos mensualites a temps pour continuer a augmenter votre pouvoir d achat.'
                         : 'Reduisez votre utilisation de credit pour ameliorer votre score.'}
                     </p>
                   </div>
@@ -597,8 +794,8 @@ export default function DashboardPage() {
                           <div className="w-10 h-10 bg-[#1a2133] rounded-2xl flex items-center justify-center border border-white/10">
                             <ShoppingBag className="w-5 h-5 text-indigo-400" />
                           </div>
-                          <div>
-                            <p className="text-sm font-bold text-white truncate max-w-[150px]">{credit.productName}</p>
+                          <div className="min-w-0">
+                            <p className="max-w-[180px] truncate text-sm font-bold text-white sm:max-w-sm">{credit.productName}</p>
                             <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-0.5 ${isFree ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
                               {isFree ? <Zap className="w-2.5 h-2.5" /> : <AlertCircle className="w-2.5 h-2.5" />}
                               {months} mois {isFree ? 'sans frais' : '+ interets'}
@@ -684,7 +881,9 @@ export default function DashboardPage() {
                         </p>
                         <button
                           onClick={() => downloadReceipt(receipt)}
-                          className="inline-flex items-center gap-2 rounded-2xl border border-violet-400/25 bg-violet-500/15 px-3.5 py-2 text-xs font-black text-violet-200 transition-all hover:border-violet-300/50 hover:bg-violet-500/25"
+                          disabled={!receipt.receiptDownloadUrl}
+                          aria-label={`Télécharger le reçu ${receipt.receiptNumber ?? receipt.transactionReference ?? receipt.id}`}
+                          className="inline-flex items-center gap-2 rounded-2xl border border-violet-400/25 bg-violet-500/15 px-3.5 py-2 text-xs font-black text-violet-200 transition-all hover:border-violet-300/50 hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <Download className="h-3.5 w-3.5" />
                           PDF
@@ -736,30 +935,6 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-
-        {/* Notifications */}
-        {notifications.length > 0 && (
-          <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-black text-white">Notifications</h2>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300">{unread} non lues</span>
-            </div>
-            <div className="space-y-2.5">
-              {notifications.slice(0, 5).map((notif) => (
-                <div key={notif.id} className={`flex items-start gap-3 p-4 rounded-2xl transition-colors ${!notif.read ? 'bg-indigo-500/10 border border-indigo-500/20' : 'bg-white/5'}`}>
-                  <div className={`w-2 h-2 rounded-full mt-2.5 flex-shrink-0 ${!notif.read ? 'bg-indigo-400' : 'bg-gray-600'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white">{notif.title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{notif.message}</p>
-                    <p className="text-[10px] text-gray-600 mt-1">
-                      {new Date(notif.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Payer avec CreditTN */}
         <div className="bg-[#111827]/90 rounded-[28px] border border-[#26324A] p-6 shadow-2xl shadow-black/20 animate-fadeIn">
@@ -819,7 +994,7 @@ export default function DashboardPage() {
         {/* App download QR */}
         <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#0B1020] p-5 text-white shadow-2xl shadow-black/30 animate-fadeIn sm:p-8">
           <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-r from-pink-500/20 via-violet-500/20 to-cyan-400/20" />
-          <div className="relative grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+          <div className="relative">
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Smartphone className="w-4 h-4 text-cyan-200" />
@@ -836,7 +1011,6 @@ export default function DashboardPage() {
                 <span className="text-xs text-slate-400 font-semibold">4.8 / 5</span>
               </div>
             </div>
-            <QRDownloadCard deepLink="creditn://download" source="dashboard-qr" />
           </div>
         </div>
       </div>

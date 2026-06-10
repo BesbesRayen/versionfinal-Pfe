@@ -88,7 +88,7 @@ const authOptions: NextAuthOptions = {
     strategy: 'jwt' as const,
     maxAge: 7 * 24 * 60 * 60,
   },
-  secret: process.env.NEXTAUTH_SECRET || 'dev-only-secret-change-me',
+  secret: process.env.NEXTAUTH_SECRET,
   debug: false,
 };
 

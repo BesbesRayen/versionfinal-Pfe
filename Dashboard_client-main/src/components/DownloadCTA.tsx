@@ -9,7 +9,7 @@ const PLAY_STORE_URL = MOBILE_DOWNLOAD_CONFIG.googlePlayUrl;
 
 export default function DownloadCTA() {
   return (
-    <section className="section-padding relative overflow-hidden bg-slate-950">
+    <section id="mobile-app-download" className="section-padding scroll-mt-20 relative overflow-hidden bg-slate-950">
       <div className="absolute left-1/2 top-16 h-72 w-72 -translate-x-1/2 rounded-full bg-pink-500/15 blur-3xl" />
       <div className="absolute bottom-20 right-10 h-80 w-80 rounded-full bg-cyan-400/10 blur-3xl" />
       <div className="container-custom mx-auto relative z-10">

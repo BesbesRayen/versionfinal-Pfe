@@ -14,6 +14,8 @@ import {
   getProfile,
   getAutopayStatus,
   processDueAutopayments,
+  processOverdueInstallments,
+  processWalletRecharge,
   getUnreadNotificationCount,
   getPopularArticles,
   CreditBalanceResult,
@@ -31,11 +33,17 @@ import { colors, radii } from "@/lib/theme";
 const quickActions: Array<{ label: string; route: AppRoute; icon: string; color: string }> = [
   { label: "Creadi Score", route: "CreadiScore", icon: "speedometer", color: "#16a34a" },
   { label: "Boutique", route: "Shops", icon: "storefront-outline", color: "#6C63FF" },
-  { label: "Mobile Pay", route: "Installments", icon: "cellphone-check", color: "#55D6A5" },
   { label: "Paiements", route: "Installments", icon: "receipt-text-outline", color: "#F59E0B" },
 ];
 
 const toMoney = (value?: number) => `${(value ?? 0).toFixed(2)} DT`;
+
+const toLocalDateString = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 const toPrettyDate = (dateIso?: string) => {
   if (!dateIso) {
@@ -80,30 +88,35 @@ const Home = () => {
       if (!silent) setLoading(true);
       setErrorMessage("");
       try {
+        const localToday = toLocalDateString();
+        await processOverdueInstallments(user.userId, localToday).catch(() => null);
+        await processWalletRecharge(user.userId, localToday).catch(() => null);
         const autopay = await getAutopayStatus(user.userId).catch(() => ({ enabled: false }));
         if (autopay.enabled) {
-          await processDueAutopayments(user.userId).catch(() => null);
+          await processDueAutopayments(user.userId, localToday).catch(() => null);
         }
         const [installmentData, paymentData, scoreData, unreadData, kycData, profileData, balanceData, popularData] = await Promise.all([
-          getMyInstallments(user.userId).catch(() => [] as Installment[]),
-          getMyPayments(user.userId).catch(() => [] as Payment[]),
-          getCreadiScoreLatest(user.userId).catch(() => null),
-          getUnreadNotificationCount(user.userId).catch(() => 0),
-          getKycStatus(user.userId).catch(() => null),
-          getProfile(user.userId).catch(() => null),
-          getCreditBalance(user.userId).catch(() => null),
-          getPopularArticles(3).catch(() => [] as PartnerArticle[]),
+          getMyInstallments(user.userId).catch(() => undefined),
+          getMyPayments(user.userId).catch(() => undefined),
+          getCreadiScoreLatest(user.userId).catch(() => undefined),
+          getUnreadNotificationCount(user.userId).catch(() => undefined),
+          getKycStatus(user.userId).catch(() => undefined),
+          getProfile(user.userId).catch(() => undefined),
+          getCreditBalance(user.userId).catch(() => undefined),
+          getPopularArticles(3).catch(() => undefined),
         ]);
 
-        setInstallments(installmentData);
-        setPayments(paymentData);
-        setScore(scoreData?.score ?? null);
-        setCreditBalance(balanceData);
-        setRiskLevel(scoreData?.risk ?? null);
-        setKycStatus(kycData?.status ?? null);
-        setUnreadCount(unreadData);
-        setProfile(profileData);
-        setPopularArticles(popularData);
+        if (installmentData !== undefined) setInstallments(installmentData);
+        if (paymentData !== undefined) setPayments(paymentData);
+        if (scoreData !== undefined) {
+          setScore(scoreData?.score ?? null);
+          setRiskLevel(scoreData?.risk ?? null);
+        }
+        if (balanceData !== undefined) setCreditBalance(balanceData);
+        if (kycData !== undefined) setKycStatus(kycData?.status ?? null);
+        if (unreadData !== undefined) setUnreadCount(unreadData);
+        if (profileData !== undefined) setProfile(profileData);
+        if (popularData !== undefined) setPopularArticles(popularData);
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Impossible de charger le tableau de bord.");
       } finally {
@@ -211,19 +224,21 @@ const Home = () => {
 
         {/* Credit overview */}
         {(() => {
-          const limit = creditBalance?.totalLimit ?? 0;
-          const used = creditBalance?.usedCredit ?? 0;
+          const limit = creditBalance?.buyingPowerLimit ?? creditBalance?.totalLimit ?? 0;
+          const used = creditBalance?.outstandingBalance ?? creditBalance?.usedCredit ?? 0;
           const available = creditBalance?.availableCredit ?? (limit - used);
-          const usedPct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+          const usedPct = creditBalance?.usedPercent !== undefined
+            ? Math.min(100, Number(creditBalance.usedPercent.toFixed(1)))
+            : limit > 0 ? Math.min(100, Number(((used / limit) * 100).toFixed(1))) : 0;
           const barColor = usedPct >= 80 ? colors.error : usedPct >= 50 ? colors.warning : colors.success;
           return (
             <FadeInView>
             <View style={styles.creditMainCard}>
               <View style={styles.creditMainHead}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.creditMainLabel}>Pouvoir d'achat</Text>
-                  <Text style={styles.creditMainLimit}>{toMoney(limit)}</Text>
-                  <Text style={styles.creditMainSublabel}>Limite totale</Text>
+                  <Text style={styles.creditMainLabel}>Disponible</Text>
+                  <Text style={styles.creditMainLimit}>{toMoney(available)}</Text>
+                  <Text style={styles.creditMainSublabel}>Solde disponible</Text>
                 </View>
                 <View style={styles.creditMainRight}>
                   <ProgressRing percent={usedPct} size={82} color={barColor} label="utilise" />
@@ -233,11 +248,8 @@ const Home = () => {
                 <View style={[styles.creditBarFill, { width: `${usedPct}%`, backgroundColor: barColor }]} />
               </View>
               <View style={styles.creditBarRow}>
-                <Text style={styles.creditBarPct}>{usedPct}% utilise</Text>
-                <Text style={styles.creditAvailText}>
-                  <Text style={styles.creditAvailAmount}>{toMoney(available)}</Text>
-                  {" disponible"}
-                </Text>
+                <Text style={styles.creditBarPct}>Utilise: {toMoney(used)} - {usedPct}%</Text>
+                <Text style={styles.creditAvailText}>Pouvoir d'achat: {toMoney(limit)}</Text>
               </View>
               {nextInstallment && (
                 <View style={styles.creditNextRow}>
@@ -261,30 +273,11 @@ const Home = () => {
           <MiniStat label="Prochaine date" value={nextInstallment ? toPrettyDate(nextInstallment.dueDate) : "-"} icon="calendar-clock" color={colors.warning} />
         </View>
 
-        <View style={styles.analyticsCard}>
-          <View style={styles.analyticsHeader}>
-            <View>
-              <Text style={styles.analyticsLabel}>Analyse mensuelle</Text>
-              <Text style={styles.analyticsTitle}>Depenses financees</Text>
-            </View>
-            <Text style={styles.analyticsAmount}>{toMoney(payments
-              .filter((payment) => new Date(payment.paidAt).getMonth() === new Date().getMonth())
-              .reduce((sum, payment) => sum + payment.amount, 0))}</Text>
-          </View>
-          <View style={styles.analyticsBars}>
-            {[0.32, 0.56, 0.44, 0.72, 0.38, 0.84].map((height, index) => (
-              <View key={index} style={styles.analyticsBarTrack}>
-                <View style={[styles.analyticsBarFill, { height: `${height * 100}%` }]} />
-              </View>
-            ))}
-          </View>
-        </View>
-
         {/* Credit health */}
         {(() => {
           const isGood = riskLevel === "LOW" || (score !== null && score >= 700);
           const isMed  = riskLevel === "MODERATE" || (score !== null && score >= 500 && score < 700);
-          const isRisk = riskLevel === "HIGH" || riskLevel === "CRITICAL" || (score !== null && score < 500);
+          const isRisk = riskLevel === "HIGH" || riskLevel === "VERY_HIGH" || riskLevel === "CRITICAL" || (score !== null && score < 500);
           const label  = isGood ? "Bonne sante" : isMed ? "Moyen" : isRisk ? "A risque" : "En evaluation";
           const icon   = isGood ? "shield-check" : isMed ? "shield-alert" : isRisk ? "shield-off" : "shield-outline";
           const bg     = isGood ? "#0d2818" : isMed ? "#2d1f00" : isRisk ? "#2d0a0a" : colors.surface;
@@ -473,14 +466,6 @@ const styles = StyleSheet.create({
   popularPrice: { fontSize: 13, fontWeight: "800", color: colors.primary },
   popularBuy: { marginTop: 6, backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 7, alignItems: "center" },
   popularBuyText: { color: colors.white, fontSize: 11, fontWeight: "800" },
-  analyticsCard: { backgroundColor: colors.card, borderRadius: radii.xxl, borderWidth: 1, borderColor: colors.cardBorder, padding: 16, gap: 14 },
-  analyticsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 },
-  analyticsLabel: { fontSize: 10, color: colors.primary, fontWeight: "900", textTransform: "uppercase" },
-  analyticsTitle: { marginTop: 4, fontSize: 15, color: colors.gray900, fontWeight: "900" },
-  analyticsAmount: { fontSize: 17, color: colors.success, fontWeight: "900", fontVariant: ["tabular-nums"] },
-  analyticsBars: { height: 78, flexDirection: "row", alignItems: "flex-end", gap: 8 },
-  analyticsBarTrack: { flex: 1, height: "100%", borderRadius: radii.full, backgroundColor: colors.surface, overflow: "hidden", justifyContent: "flex-end" },
-  analyticsBarFill: { width: "100%", borderRadius: radii.full, backgroundColor: colors.primary },
 });
 
 export default Home;

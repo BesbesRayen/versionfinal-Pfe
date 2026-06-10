@@ -30,6 +30,7 @@ export const mobileDownloadConfig = {
     process.env.NEXT_PUBLIC_CREDITTN_DOWNLOAD_LANDING_URL
     ?? (legacyDownloadBaseUrl ? `${legacyDownloadBaseUrl.replace(/\/+$/, '')}/mobile-download` : undefined)
     ?? 'https://yourdomain.com/mobile-download',
+  mobileWebUrl: process.env.NEXT_PUBLIC_CREDITTN_MOBILE_WEB_URL ?? '',
 
   deepLinkScheme: process.env.NEXT_PUBLIC_CREDITTN_DEEP_LINK_SCHEME ?? 'credittn://',
   defaultDeepLink: process.env.NEXT_PUBLIC_CREDITTN_DEFAULT_DEEP_LINK ?? 'credittn://home',

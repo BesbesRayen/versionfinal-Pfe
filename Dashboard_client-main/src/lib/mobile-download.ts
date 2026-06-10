@@ -36,6 +36,21 @@ export function getMobileDownloadLandingUrl(origin: string, options: LandingUrlO
   return buildLandingUrl(origin, options);
 }
 
+export function getMobileWebUrl(origin: string) {
+  if (mobileDownloadConfig.mobileWebUrl) return mobileDownloadConfig.mobileWebUrl;
+
+  try {
+    const url = new URL(origin || mobileDownloadConfig.downloadLandingUrl);
+    url.port = '8083';
+    url.pathname = '';
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
 export function getAutomaticDownloadTarget(os: MobileOS, deepLink?: string) {
   return getMobileRedirectTarget(os, deepLink)?.url ?? '';
 }

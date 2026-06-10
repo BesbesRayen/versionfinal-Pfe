@@ -32,6 +32,7 @@ public class PurchaseService {
     private final AdminNotificationService adminNotificationService;
     private final NotificationService notificationService;
     private final TransactionService transactionService;
+    private final WalletService walletService;
 
     @Value("${app.credit.max-per-user:2000}")
     private BigDecimal maxCreditPerUser;
@@ -81,6 +82,7 @@ public class PurchaseService {
 
     @Transactional
     protected PurchaseOrderResponse processCashPurchase(User user, Article article) {
+        walletService.debit(user.getId(), article.getPrice());
         String transactionId = generateOrderTransactionId();
 
         PurchaseOrder order = PurchaseOrder.builder()
@@ -152,6 +154,8 @@ public class PurchaseService {
             throw new BadRequestException("Insufficient available credit. Remaining financed balance: "
                     + availableCredit.intValue() + " TND");
         }
+
+        walletService.debit(user.getId(), downPayment);
 
         CreditRequestResponse creditResponse = creditService.createCreditRequest(user.getId(),
                 CreditRequestDto.builder()

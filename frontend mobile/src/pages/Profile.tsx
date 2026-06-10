@@ -20,6 +20,8 @@ import {
   getProfile,
   KycStatusResult,
   processDueAutopayments,
+  processOverdueInstallments,
+  processWalletRecharge,
   setAuthToken,
   setAutopay,
   uploadProfilePhoto,
@@ -104,10 +106,19 @@ const Profile = () => {
   const [hasCard, setHasCard] = useState<boolean | null>(null);
   const [hasFinancialProfile, setHasFinancialProfile] = useState<boolean | null>(null);
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
-  const [creditBalance, setCreditBalance] = useState<{ totalLimit: number; usedCredit: number; availableCredit: number } | null>(null);
+  const [creditBalance, setCreditBalance] = useState<{
+    buyingPowerLimit?: number;
+    totalLimit: number;
+    outstandingBalance?: number;
+    usedCredit: number;
+    availableCredit: number;
+    usedPercent?: number;
+  } | null>(null);
   const [score, setScore] = useState<number | null>(null);
   const [autopayEnabled, setAutopayEnabled] = useState(false);
   const [savingAutopay, setSavingAutopay] = useState(false);
+  const [showAutopayPasswordModal, setShowAutopayPasswordModal] = useState(false);
+  const [autopayPassword, setAutopayPassword] = useState("");
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -125,33 +136,42 @@ const Profile = () => {
     if (!silent) setLoading(true);
     setErrorMessage("");
     try {
+      const localToday = toLocalDateString();
+      await processOverdueInstallments(user.userId, localToday).catch(() => null);
+      await processWalletRecharge(user.userId, localToday).catch((error) => {
+        setErrorMessage(error instanceof Error ? error.message : "Recharge mensuelle impossible.");
+        return null;
+      });
+
       const [profileData, kycData, cardsData, finProfileData, accountStatusData, autopayData, balanceData, scoreData] =
         await Promise.all([
           getProfile(user.userId),
-          getKycStatus(user.userId).catch(() => null),
-          getCards(user.userId).catch(() => []),
-          getFinancialProfile(user.userId).catch(() => null),
-          getAccountStatus(user.userId).catch(() => null),
-          getAutopayStatus(user.userId).catch(() => ({ enabled: false })),
-          getCreditBalance(user.userId).catch(() => null),
-          getCreadiScoreLatest(user.userId).catch(() => null),
+          getKycStatus(user.userId).catch(() => undefined),
+          getCards(user.userId).catch(() => undefined),
+          getFinancialProfile(user.userId).catch(() => undefined),
+          getAccountStatus(user.userId).catch(() => undefined),
+          getAutopayStatus(user.userId).catch(() => undefined),
+          getCreditBalance(user.userId).catch(() => undefined),
+          getCreadiScoreLatest(user.userId).catch(() => undefined),
         ]);
       let latestAccountStatus = accountStatusData;
-      const localToday = toLocalDateString();
 
       if (autopayData?.enabled && isDateDue(accountStatusData?.nextInstallmentDate, localToday)) {
-        await processDueAutopayments(user.userId, localToday);
+        await processDueAutopayments(user.userId, localToday).catch((error) => {
+          setErrorMessage(error instanceof Error ? error.message : "Paiement automatique impossible.");
+          return null;
+        });
         latestAccountStatus = await getAccountStatus(user.userId).catch(() => accountStatusData);
       }
 
       setProfile(profileData);
-      setKyc(kycData);
-      setHasCard(cardsData.length > 0);
-      setHasFinancialProfile(finProfileData !== null);
-      setAccountStatus(latestAccountStatus);
-      setAutopayEnabled(autopayData?.enabled ?? false);
-      setCreditBalance(balanceData);
-      setScore(scoreData?.score ?? null);
+      if (kycData !== undefined) setKyc(kycData);
+      if (cardsData !== undefined) setHasCard(cardsData.length > 0);
+      if (finProfileData !== undefined) setHasFinancialProfile(finProfileData !== null);
+      if (latestAccountStatus !== undefined) setAccountStatus(latestAccountStatus);
+      if (autopayData !== undefined) setAutopayEnabled(autopayData.enabled);
+      if (balanceData !== undefined) setCreditBalance(balanceData);
+      if (scoreData !== undefined) setScore(scoreData?.score ?? null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Impossible de charger votre profil.");
     } finally {
@@ -165,26 +185,29 @@ const Profile = () => {
   }, [loadProfile]);
 
   useEffect(() => {
-    if (!user || !autopayEnabled) return;
+    if (!user) return;
 
-    const processDueForPhoneDate = async () => {
+    const processBillingForPhoneDate = async () => {
       const localToday = toLocalDateString();
-      if (!isDateDue(accountStatus?.nextInstallmentDate, localToday)) return;
 
       try {
-        await processDueAutopayments(user.userId, localToday);
+        await processOverdueInstallments(user.userId, localToday);
+        await processWalletRecharge(user.userId, localToday);
+        if (autopayEnabled && isDateDue(accountStatus?.nextInstallmentDate, localToday)) {
+          await processDueAutopayments(user.userId, localToday);
+        }
         const refreshed = await getAccountStatus(user.userId).catch(() => null);
         if (refreshed) setAccountStatus(refreshed);
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Paiement automatique impossible.");
+        setErrorMessage(error instanceof Error ? error.message : "Traitement mensuel impossible.");
       }
     };
 
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") void processDueForPhoneDate();
+      if (state === "active") void processBillingForPhoneDate();
     });
 
-    void processDueForPhoneDate();
+    void processBillingForPhoneDate();
 
     return () => subscription.remove();
   }, [accountStatus?.nextInstallmentDate, autopayEnabled, user]);
@@ -214,7 +237,10 @@ const Profile = () => {
   const kycLabel = kyc?.status ?? profile?.kycStatus ?? "NOT_SUBMITTED";
   const kycConfig = KYC_STATUS_CONFIG[kycLabel] ?? KYC_STATUS_CONFIG.NOT_SUBMITTED;
   const isGoodPayer = kycLabel === "VERIFIED" && !!hasCard && !!hasFinancialProfile;
-  const usedPercent = (creditBalance?.totalLimit ?? 0) > 0 ? ((creditBalance?.usedCredit ?? 0) / (creditBalance?.totalLimit ?? 1)) * 100 : 0;
+  const buyingPowerLimit = creditBalance?.buyingPowerLimit ?? creditBalance?.totalLimit ?? 0;
+  const outstandingBalance = creditBalance?.outstandingBalance ?? creditBalance?.usedCredit ?? 0;
+  const availableBalance = creditBalance?.availableCredit ?? Math.max(0, buyingPowerLimit - outstandingBalance);
+  const usedPercent = creditBalance?.usedPercent ?? (buyingPowerLimit > 0 ? (outstandingBalance / buyingPowerLimit) * 100 : 0);
   const nextDate = accountStatus?.nextInstallmentDate
     ? new Date(accountStatus.nextInstallmentDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
     : "Aucune";
@@ -250,12 +276,12 @@ const Profile = () => {
     }
   };
 
-  const handleToggleAutopay = async (value: boolean) => {
+  const updateAutopay = async (value: boolean, password?: string) => {
     if (savingAutopay) return;
     setAutopayEnabled(value);
     setSavingAutopay(true);
     try {
-      const response = await setAutopay(user.userId, value);
+      const response = await setAutopay(user.userId, value, password);
       let paidInstallments = response.data?.paidInstallments ?? 0;
 
       if (value) {
@@ -280,6 +306,15 @@ const Profile = () => {
     }
   };
 
+  const handleToggleAutopay = (value: boolean) => {
+    if (value) {
+      setAutopayPassword("");
+      setShowAutopayPasswordModal(true);
+      return;
+    }
+    void updateAutopay(false);
+  };
+
   const setupSteps = [
     { label: "Identite KYC", done: kycLabel === "VERIFIED", route: "Kyc" as const },
     { label: "Carte active", done: !!hasCard, route: "Cards" as const },
@@ -297,9 +332,6 @@ const Profile = () => {
             <Text style={styles.eyebrow}>Private banking profile</Text>
             <Text style={styles.title}>Bonsoir, {firstName}</Text>
           </View>
-          <Pressable style={styles.headerIcon} onPress={() => navigate("Notifications")}>
-            <MaterialCommunityIcons name="bell-outline" size={21} color={colors.white} />
-          </Pressable>
         </View>
 
         {!!errorMessage && (
@@ -339,12 +371,16 @@ const Profile = () => {
             </View>
 
             <View style={styles.heroBalanceRow}>
-              <View>
-                <Text style={styles.heroBalanceLabel}>Credit disponible</Text>
-                <Text style={styles.heroBalance}>{money(creditBalance?.availableCredit)}</Text>
-                <Text style={styles.heroBalanceSub}>sur {money(creditBalance?.totalLimit)} de limite</Text>
+              <View style={styles.heroBalanceCopy}>
+                <Text style={styles.heroBalanceLabel}>Disponible</Text>
+                <Text style={styles.heroBalance}>{money(availableBalance)}</Text>
+                <Text style={styles.heroBalanceSub}>
+                  Pouvoir d'achat: {money(buyingPowerLimit)} - Utilise: {money(outstandingBalance)}
+                </Text>
               </View>
-              <ProgressRing percent={usedPercent} size={84} strokeWidth={8} color={colors.primary} label="utilise" />
+              <View style={styles.heroProgressRing}>
+                <ProgressRing percent={usedPercent} size={70} strokeWidth={7} color={colors.primary} label="utilise" />
+              </View>
             </View>
 
             <View style={styles.statusStrip}>
@@ -390,7 +426,7 @@ const Profile = () => {
             <View style={styles.sectionHeader}>
               <View>
                 <Text style={styles.sectionKicker}>Activation</Text>
-                <Text style={styles.sectionTitle}>Votre compte a finaliser</Text>
+                <Text style={styles.sectionTitle}> 3 Step de Verification </Text>
               </View>
               <Text style={styles.setupProgress}>{setupSteps.filter((step) => step.done).length}/3</Text>
             </View>
@@ -536,6 +572,54 @@ const Profile = () => {
             </View>
           </View>
         </Modal>
+        <Modal
+          visible={showAutopayPasswordModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowAutopayPasswordModal(false)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalIcon}>
+                <MaterialCommunityIcons name="shield-lock-outline" size={26} color={colors.primary} />
+              </View>
+              <Text style={styles.modalTitle}>Activer le paiement automatique</Text>
+              <Text style={styles.modalBody}>
+                Confirmez le mot de passe de votre compte avant d'autoriser les paiements automatiques.
+              </Text>
+              <TextInput
+                style={styles.modalInput}
+                value={autopayPassword}
+                onChangeText={setAutopayPassword}
+                placeholder="Mot de passe"
+                placeholderTextColor={colors.gray500}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={styles.modalCancelBtn}
+                  onPress={() => { setShowAutopayPasswordModal(false); setAutopayPassword(""); }}
+                >
+                  <Text style={styles.modalCancelText}>Annuler</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalDeleteBtn, !autopayPassword.trim() && styles.modalDeleteBtnOff]}
+                  disabled={!autopayPassword.trim() || savingAutopay}
+                  onPress={async () => {
+                    const password = autopayPassword;
+                    setShowAutopayPasswordModal(false);
+                    setAutopayPassword("");
+                    await updateAutopay(true, password);
+                  }}
+                >
+                  <Text style={styles.modalDeleteText}>{savingAutopay ? "Verification..." : "Activer"}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
       <BottomNav />
     </MobileLayout>
@@ -567,16 +651,6 @@ const styles = StyleSheet.create({
     fontSize: 31,
     lineHeight: 36,
     fontWeight: "900",
-  },
-  headerIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.13)",
-    alignItems: "center",
-    justifyContent: "center",
   },
   errorBanner: {
     flexDirection: "row",
@@ -704,6 +778,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 14,
   },
+  heroBalanceCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroProgressRing: {
+    width: 70,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
   heroBalanceLabel: {
     color: "#BDB5FF",
     fontSize: 12,
@@ -713,8 +797,8 @@ const styles = StyleSheet.create({
   heroBalance: {
     marginTop: 7,
     color: colors.white,
-    fontSize: 39,
-    lineHeight: 43,
+    fontSize: 35,
+    lineHeight: 40,
     fontWeight: "900",
     fontVariant: ["tabular-nums"],
   },

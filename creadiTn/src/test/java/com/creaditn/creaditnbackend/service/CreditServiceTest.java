@@ -62,14 +62,23 @@ class CreditServiceTest {
         );
 
         when(userRepository.findById(5L)).thenReturn(Optional.of(user));
-        when(creadiScoreService.computeCreditLimitForUser(5L)).thenReturn(1000.0);
-        when(creditRequestRepository.findByUserIdAndStatus(5L, CreditRequestStatus.APPROVED)).thenReturn(List.of(request));
-        when(installmentRepository.findByCreditRequestId(44L)).thenReturn(installments);
-
+        when(creadiScoreService.computeBuyingPowerForUser(5L)).thenReturn(new CreadiScoreService.BuyingPowerSnapshot(
+                1000.0,
+                0.0,
+                1000.0,
+                320.0,
+                680.0,
+                32.0,
+                BigDecimal.valueOf(160),
+                LocalDate.parse("2026-02-01")
+        ));
         var balance = service().getCreditBalance(5L);
 
         assertThat(balance.getUsedCredit()).isEqualTo(320.0);
+        assertThat(balance.getOutstandingBalance()).isEqualTo(320.0);
         assertThat(balance.getAvailableCredit()).isEqualTo(680.0);
+        assertThat(balance.getBuyingPowerLimit()).isEqualTo(1000.0);
+        assertThat(balance.getUsedPercent()).isEqualTo(32.0);
     }
 
     private CreditService service() {

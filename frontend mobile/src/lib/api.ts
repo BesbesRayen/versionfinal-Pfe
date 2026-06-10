@@ -134,6 +134,13 @@ export interface CreditRequestResult {
 }
 
 export interface CreditBalanceResult {
+  buyingPowerLimit: number;
+  baseBuyingPower: number;
+  paymentTrustBonus: number;
+  outstandingBalance: number;
+  usedPercent: number;
+  nextInstallmentAmount?: number;
+  nextInstallmentDate?: string | null;
   totalLimit: number;
   usedCredit: number;
   availableCredit: number;
@@ -193,7 +200,7 @@ export interface FinancialProfileDto {
   monthlySalary: number;
   salaryDay: number;
   employmentStatus: string;
-  riskLevel: "LOW" | "MEDIUM" | "HIGH";
+  riskLevel: "LOW" | "MODERATE" | "HIGH" | "VERY_HIGH" | "CRITICAL";
   createdAt: string;
   updatedAt: string;
 }
@@ -791,7 +798,7 @@ export const getPaymentMethods = async (userId: number) =>
     { userId },
   );
 
-export const payInstallment = async (userId: number, installmentId: number, amount: number) =>
+export const payInstallment = async (userId: number, installmentId: number, amount: number, password: string) =>
   requestJson<Payment>(
     `/api/payments/installments/${installmentId}/pay`,
     {
@@ -800,16 +807,28 @@ export const payInstallment = async (userId: number, installmentId: number, amou
         installmentId,
         amount,
         paymentMethod: "CARD",
+        password,
       }),
     },
     { userId },
   );
 
-export const payAllInstallments = async (userId: number) =>
+export const payAllInstallments = async (userId: number, password: string) =>
   requestJson<PayAllResult>(
     "/api/payments/payAll",
     {
       method: "POST",
+      body: JSON.stringify({ password }),
+    },
+    { userId },
+  );
+
+export const payCreditInstallments = async (userId: number, creditRequestId: number, password: string) =>
+  requestJson<PayAllResult>(
+    `/api/payments/credits/${creditRequestId}/pay`,
+    {
+      method: "POST",
+      body: JSON.stringify({ password }),
     },
     { userId },
   );
@@ -888,14 +907,32 @@ export const deleteCard = async (userId: number, cardId: number, verification: C
   );
 
 export const getFinancialProfile = async (userId: number) => {
-  try {
-    return await requestJson<FinancialProfileDto>("/api/profile/get", { method: "GET" }, { userId });
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("status 404")) {
-      return null;
-    }
-    throw error;
+  const authHeaders: Record<string, string> = {};
+  if (_authToken) {
+    authHeaders["Authorization"] = `Bearer ${_authToken}`;
   }
+
+  const response = await fetch(`${API_BASE_URL}${withQuery("/api/profile/get", { userId })}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+  });
+
+  if (response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const message = await getErrorMessage(response);
+    if (response.status === 401 || response.status === 403) {
+      _authErrorHandler?.(message);
+    }
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<FinancialProfileDto>;
 };
 
 export const createFinancialProfile = async (userId: number, payload: CreateFinancialProfileRequest) =>
@@ -1137,10 +1174,17 @@ export const markNotificationAsRead = async (notificationId: number) =>
     { method: "PUT" },
   );
 
+export const markAllNotificationsAsRead = async () =>
+  requestJson<{ success: boolean; message: string; data?: { count: number } }>(
+    "/api/notifications/read-all",
+    { method: "PUT" },
+  );
+
 // ── Creadi Score (FICO-style 0-1000) ────────────────────────
 
-export type ScoreLevel = "EXCELLENT" | "GOOD" | "MEDIUM" | "HIGH_RISK";
-export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+export type ScoreLevel = "EXCELLENT" | "GOOD" | "MEDIUM" | "HIGH_RISK" | "CRITICAL";
+export type RiskLevel = "LOW" | "MODERATE" | "HIGH" | "VERY_HIGH" | "CRITICAL";
+export type ScoreStatus = "COMPLETE" | "INCOMPLETE" | "BLOCKED";
 
 export interface ScoreHistoryItem {
   score: number;
@@ -1150,26 +1194,53 @@ export interface ScoreHistoryItem {
 
 export interface CreadiScoreResult {
   userId: number;
-  score: number;
-  level: ScoreLevel;
-  risk: RiskLevel;
+  score: number | null;
+  totalScore?: number | null;
+  scoreStatus: ScoreStatus;
+  level: ScoreLevel | null;
+  risk: RiskLevel | null;
   reason: string;
 
   kycScore: number;
+  financialScore: number;
+  paymentBehaviorScore: number;
+  stabilityScore: number;
+  riskScore: number;
   salaryScore: number;
   maritalScore: number;
   childrenScore: number;
   behaviorScore: number;
   behaviorAnalysis?: string;
   scoreFactors?: string[];
+  scoreExplanation?: string;
 
   badge: string | null;
   maxCreditLimit: number;
+  buyingPowerLimit?: number;
+  baseBuyingPower?: number;
+  paymentTrustBonus?: number;
+  outstandingBalance?: number;
+  availableCredit?: number;
+  usedPercent?: number;
+  nextInstallmentAmount?: number;
+  nextInstallmentDate?: string | null;
 
   history: ScoreHistoryItem[];
   improvementTips: string[];
 
   calculatedAt: string;
+
+  salaryPoints?: number;
+  dtiPoints?: number;
+  incomeStabilityPoints?: number;
+  onTimePoints?: number;
+  recentPoints?: number;
+  historyPoints?: number;
+  positiveHistoryPoints?: number;
+  latePenaltyPoints?: number;
+  accountAgePoints?: number;
+  employmentPoints?: number;
+  loyaltyPoints?: number;
 }
 
 export const calculateCreadiScore = async (userId: number) =>
@@ -1224,12 +1295,12 @@ export const getTransactions = async (userId: number) =>
 export const getAutopayStatus = async (userId: number) =>
   requestJson<{ enabled: boolean }>("/api/payments/autopay", { method: "GET" }, { userId });
 
-export const setAutopay = async (userId: number, enabled: boolean) =>
+export const setAutopay = async (userId: number, enabled: boolean, password?: string) =>
   requestJson<{ success: boolean; message: string; data?: { enabled: boolean; paidInstallments: number } }>(
     "/api/payments/autopay",
     {
       method: "PUT",
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({ enabled, password }),
     },
     { userId },
   );
@@ -1237,6 +1308,29 @@ export const setAutopay = async (userId: number, enabled: boolean) =>
 export const processDueAutopayments = async (userId: number, asOfDate?: string) =>
   requestJson<{ success: boolean; message: string; data?: { paidInstallments: number } }>(
     "/api/payments/autopay/process-due",
+    { method: "POST" },
+    asOfDate ? { userId, asOfDate } : { userId },
+  );
+
+export const processOverdueInstallments = async (userId: number, asOfDate?: string) =>
+  requestJson<{ overdueInstallments: number }>(
+    "/api/payments/overdue/process",
+    { method: "POST" },
+    asOfDate ? { userId, asOfDate } : { userId },
+  );
+
+export interface WalletRechargeResult {
+  userId: number;
+  processedThrough: string;
+  creditedCycles: number;
+  creditedAmount: number;
+  balance: number;
+  billingCycles: string[];
+}
+
+export const processWalletRecharge = async (userId: number, asOfDate?: string) =>
+  requestJson<WalletRechargeResult>(
+    "/api/payments/wallet/recharge/process",
     { method: "POST" },
     asOfDate ? { userId, asOfDate } : { userId },
   );

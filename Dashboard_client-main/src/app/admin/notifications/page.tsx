@@ -59,7 +59,7 @@ export default function AdminNotificationsPage() {
     <div className="space-y-6 animate-fadeIn">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Alertes Achat Credit</h1>
+          <h1 className="text-2xl font-bold text-white">Alertes crédit et retards</h1>
           <p className="text-gray-500 mt-1">
             {notifications.length} notification(s), {unreadCount} non lue(s)
           </p>
@@ -103,7 +103,9 @@ export default function AdminNotificationsPage() {
             <div
               key={notification.id}
               className={`p-4 rounded-2xl border ${
-                notification.read
+                notification.type === 'INSTALLMENT_OVERDUE' && !notification.read
+                  ? 'bg-red-500/10 border-red-500/30'
+                  : notification.read
                   ? 'bg-[#111827] border-white/5'
                   : 'bg-indigo-500/10 border-indigo-500/25'
               }`}
@@ -111,13 +113,23 @@ export default function AdminNotificationsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="inline-flex items-center gap-2">
-                    <BellRing className={`w-4 h-4 ${notification.read ? 'text-gray-500' : 'text-indigo-300'}`} />
+                    <BellRing className={`w-4 h-4 ${
+                      notification.read
+                        ? 'text-gray-500'
+                        : notification.type === 'INSTALLMENT_OVERDUE'
+                          ? 'text-red-300'
+                          : 'text-indigo-300'
+                    }`} />
                     <p className={`text-sm font-semibold ${notification.read ? 'text-gray-300' : 'text-white'}`}>
                       {notification.title}
                     </p>
                     {!notification.read && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-400/20 text-indigo-300 border border-indigo-400/30">
-                        NEW
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] border ${
+                        notification.type === 'INSTALLMENT_OVERDUE'
+                          ? 'bg-red-400/20 text-red-300 border-red-400/30'
+                          : 'bg-indigo-400/20 text-indigo-300 border-indigo-400/30'
+                      }`}>
+                        {notification.type === 'INSTALLMENT_OVERDUE' ? 'EN RETARD' : 'NEW'}
                       </span>
                     )}
                   </div>

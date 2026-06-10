@@ -4,6 +4,7 @@ import com.creaditn.creaditnbackend.dto.AdminNotificationDto;
 import com.creaditn.creaditnbackend.entity.AdminNotification;
 import com.creaditn.creaditnbackend.entity.AdminNotificationType;
 import com.creaditn.creaditnbackend.entity.Invoice;
+import com.creaditn.creaditnbackend.entity.Installment;
 import com.creaditn.creaditnbackend.entity.PurchaseOrder;
 import com.creaditn.creaditnbackend.exception.ResourceNotFoundException;
 import com.creaditn.creaditnbackend.repository.AdminNotificationRepository;
@@ -67,6 +68,26 @@ public class AdminNotificationService {
                     + "<p><strong>Invoice:</strong> " + invoice.getInvoiceNumber() + "</p>";
             emailService.send(adminEmail, "[CreadiTN] New credit purchase", body);
         }
+    }
+
+    @Transactional
+    public void notifyInstallmentOverdue(Installment installment) {
+        var user = installment.getCreditRequest().getUser();
+        String product = installment.getCreditRequest().getProductName() == null
+                ? "Credit #" + installment.getCreditRequest().getId()
+                : installment.getCreditRequest().getProductName();
+
+        AdminNotification notification = AdminNotification.builder()
+                .title("Echeance en retard")
+                .message("Client " + user.getFirstName() + " " + user.getLastName()
+                        + " (" + user.getEmail() + ") a une echeance en retard pour " + product
+                        + ". Montant: " + installment.getAmount() + " TND, date limite: "
+                        + installment.getDueDate() + ".")
+                .type(AdminNotificationType.INSTALLMENT_OVERDUE)
+                .read(false)
+                .transactionId("INSTALLMENT-" + installment.getId())
+                .build();
+        adminNotificationRepository.save(notification);
     }
 
     public List<AdminNotificationDto> getAll() {

@@ -9,14 +9,16 @@ import com.creaditn.creaditnbackend.entity.InstallmentStatus;
 import com.creaditn.creaditnbackend.entity.NotificationType;
 import com.creaditn.creaditnbackend.entity.User;
 import com.creaditn.creaditnbackend.entity.UserWallet;
+import com.creaditn.creaditnbackend.exception.BadRequestException;
 import com.creaditn.creaditnbackend.repository.InstallmentRepository;
 import com.creaditn.creaditnbackend.repository.PaymentRepository;
 import com.creaditn.creaditnbackend.repository.UserRepository;
-import com.creaditn.creaditnbackend.repository.UserWalletRepository;
 import com.creaditn.creaditnbackend.service.CardService;
 import com.creaditn.creaditnbackend.service.CreadiScoreService;
 import com.creaditn.creaditnbackend.service.NotificationService;
 import com.creaditn.creaditnbackend.service.TransactionService;
+import com.creaditn.creaditnbackend.service.WalletService;
+import com.creaditn.creaditnbackend.service.WalletRechargeService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -45,7 +47,7 @@ class AutopaySchedulerTest {
     private UserRepository userRepository;
 
     @Mock
-    private UserWalletRepository userWalletRepository;
+    private WalletService walletService;
 
     @Mock
     private CardService cardService;
@@ -59,6 +61,9 @@ class AutopaySchedulerTest {
     @Mock
     private CreadiScoreService creadiScoreService;
 
+    @Mock
+    private WalletRechargeService walletRechargeService;
+
     @Test
     void processAutopaymentsPaysDueInstallmentAndDeductsWallet() {
         User user = user(true);
@@ -70,7 +75,10 @@ class AutopaySchedulerTest {
                 any(LocalDate.class)))
                 .thenReturn(List.of(installment));
         when(userRepository.findById(7L)).thenReturn(Optional.of(user));
-        when(userWalletRepository.findByUserId(7L)).thenReturn(Optional.of(wallet));
+        doAnswer(invocation -> {
+            wallet.setBalance(wallet.getBalance().subtract(invocation.getArgument(1)));
+            return wallet;
+        }).when(walletService).debit(eq(7L), any(BigDecimal.class));
         when(cardService.getDefaultActiveCard(7L)).thenReturn(card(user));
 
         scheduler().processAutopayments();
@@ -80,7 +88,7 @@ class AutopaySchedulerTest {
         assertThat(installment.getPaidDate()).isNotNull();
         assertThat(user.getPaymentScoreModifier()).isEqualTo(13);
 
-        verify(userWalletRepository).save(wallet);
+        verify(walletService).debit(7L, new BigDecimal("125.00"));
         verify(installmentRepository).save(installment);
         verify(paymentRepository).save(argThat(payment ->
                 payment.getUser().equals(user)
@@ -94,9 +102,8 @@ class AutopaySchedulerTest {
     }
 
     @Test
-    void processAutopaymentsTopsUpHiddenWalletWhenDefaultCardIsActive() {
+    void processAutopaymentsSkipsAndNotifiesWhenWalletBalanceIsInsufficient() {
         User user = user(true);
-        UserWallet wallet = wallet("50.00");
         Installment installment = installment(user, "120.00", "0.00");
 
         when(installmentRepository.findByStatusInAndDueDateLessThanEqual(
@@ -104,18 +111,26 @@ class AutopaySchedulerTest {
                 any(LocalDate.class)))
                 .thenReturn(List.of(installment));
         when(userRepository.findById(7L)).thenReturn(Optional.of(user));
-        when(userWalletRepository.findByUserId(7L)).thenReturn(Optional.of(wallet));
         when(cardService.getDefaultActiveCard(7L)).thenReturn(card(user));
+        doThrow(new BadRequestException("Insufficient wallet balance"))
+                .when(walletService).debit(7L, new BigDecimal("120.00"));
 
         scheduler().processAutopayments();
 
-        assertThat(wallet.getBalance()).isEqualByComparingTo("0.00");
-        assertThat(installment.getStatus()).isEqualTo(InstallmentStatus.PAID);
+        assertThat(installment.getStatus()).isEqualTo(InstallmentStatus.PENDING);
 
-        verify(userWalletRepository).save(wallet);
-        verify(installmentRepository).save(installment);
-        verify(paymentRepository).save(any());
-        verify(transactionService).record(eq(7L), eq(new BigDecimal("120.00")), eq("PAYMENT"), eq("SUCCESS"), contains("Autopay"), startsWith("AUTO-"));
+        verify(walletService).debit(7L, new BigDecimal("120.00"));
+        verify(installmentRepository, never()).save(any());
+        verify(paymentRepository, never()).save(any());
+        verify(transactionService).record(
+                eq(7L),
+                eq(new BigDecimal("120.00")),
+                eq("PAYMENT"),
+                eq("FAILED"),
+                contains("insufficient"),
+                startsWith("AUTO-FAILED-"));
+        verify(notificationService).sendNotification(eq(7L), eq("Autopay Failed"),
+                contains("Insufficient wallet balance"), eq(NotificationType.PAYMENT_FAILED));
     }
 
     @Test
@@ -132,7 +147,7 @@ class AutopaySchedulerTest {
         scheduler().processAutopayments();
 
         assertThat(installment.getStatus()).isEqualTo(InstallmentStatus.PENDING);
-        verifyNoInteractions(userWalletRepository);
+        verifyNoInteractions(walletService);
         verifyNoInteractions(cardService);
         verifyNoInteractions(transactionService);
         verifyNoInteractions(notificationService);
@@ -153,9 +168,9 @@ class AutopaySchedulerTest {
         scheduler().processAutopayments();
 
         assertThat(installment.getStatus()).isEqualTo(InstallmentStatus.PENDING);
-        verifyNoInteractions(userWalletRepository);
+        verifyNoInteractions(walletService);
         verifyNoInteractions(paymentRepository);
-        verify(notificationService).sendNotification(eq(7L), eq("Autopay Failed"), contains("active default payment card"), eq(NotificationType.PAYMENT_REMINDER));
+        verify(notificationService).sendNotification(eq(7L), eq("Autopay Failed"), contains("active default payment card"), eq(NotificationType.PAYMENT_FAILED));
     }
 
     @Test
@@ -180,11 +195,12 @@ class AutopaySchedulerTest {
                 installmentRepository,
                 paymentRepository,
                 userRepository,
-                userWalletRepository,
+                walletService,
                 cardService,
                 notificationService,
                 transactionService,
-                creadiScoreService
+                creadiScoreService,
+                walletRechargeService
         );
     }
 

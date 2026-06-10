@@ -4,6 +4,8 @@ import com.creaditn.creaditnbackend.entity.Payment;
 import com.creaditn.creaditnbackend.exception.ResourceNotFoundException;
 import com.creaditn.creaditnbackend.repository.InstallmentRepository;
 import com.creaditn.creaditnbackend.repository.PaymentRepository;
+import com.creaditn.creaditnbackend.security.JwtUtil;
+import com.creaditn.creaditnbackend.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -28,14 +30,19 @@ public class ReceiptController {
 
     private final PaymentRepository paymentRepository;
     private final InstallmentRepository installmentRepository;
+    private final JwtUtil jwtUtil;
 
     private static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("dd MMMM yyyy HH:mm", java.util.Locale.FRENCH);
 
     @GetMapping("/receipt/{paymentId}")
-    public ResponseEntity<byte[]> downloadReceipt(@PathVariable Long paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
+    public ResponseEntity<byte[]> downloadReceipt(@PathVariable Long paymentId,
+                                                  @RequestParam String token) {
+        Payment payment = paymentRepository.findWithReceiptDetailsById(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
+        if (!jwtUtil.validateReceiptToken(token, paymentId, payment.getUser().getId())) {
+            throw new BadRequestException("Invalid or expired receipt link");
+        }
 
         byte[] pdf = buildReceiptPdf(payment);
 

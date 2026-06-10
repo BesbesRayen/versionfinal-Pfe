@@ -4,5 +4,6 @@ public enum RiskLevel {
     LOW,
     MODERATE,
     HIGH,
+    VERY_HIGH,
     CRITICAL
 }

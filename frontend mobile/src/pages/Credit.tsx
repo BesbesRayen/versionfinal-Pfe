@@ -151,8 +151,9 @@ const Credit = () => {
   const [blockingStep, setBlockingStep] = useState<"ADD_CARD" | "COMPLETE_FINANCIAL_PROFILE" | null>(null);
 
   const articleId = Number(params?.articleId ?? 0);
-  const isArticleCheckout = articleId > 0;
   const prefillAmount = Number(params?.prefillAmount ?? 0);
+  const hasSelectedProduct = articleId > 0 && prefillAmount > 0;
+  const isArticleCheckout = hasSelectedProduct;
   const selectedProductName = String(params?.productName ?? "");
   const selectedBoutiqueName = String(params?.boutiqueName ?? "");
   const selectedProductImage = String(params?.productImageUrl ?? "");
@@ -169,7 +170,7 @@ const Credit = () => {
       : "";
 
   const loadAccountData = useCallback(async () => {
-    if (!user) return;
+    if (!user || !hasSelectedProduct) return;
 
     setErrorMessage("");
     try {
@@ -186,11 +187,9 @@ const Credit = () => {
           : null,
       );
     } catch (error) {
-      setCreditLimit(0);
-      setCreditBalance(null);
       setErrorMessage(sanitizeCreditError(error));
     }
-  }, [user]);
+  }, [hasSelectedProduct, user]);
 
   useEffect(() => {
     loadAccountData();
@@ -203,7 +202,7 @@ const Credit = () => {
   }, [prefillAmount]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !hasSelectedProduct) return;
 
     simulateCredit({
       totalAmount: selectedPrice,
@@ -212,9 +211,14 @@ const Credit = () => {
     }, user.userId).catch(() => {
       // Local calculations keep the preview responsive when the backend is unavailable.
     });
-  }, [downPayment, selectedPlan, selectedPrice, user]);
+  }, [downPayment, hasSelectedProduct, selectedPlan, selectedPrice, user]);
 
   const handleConfirmRequest = async () => {
+    if (!hasSelectedProduct) {
+      navigate("Shops");
+      return;
+    }
+
     if (!user) {
       navigate("Login");
       return;
@@ -267,6 +271,27 @@ const Credit = () => {
       setLoading(false);
     }
   };
+
+  if (!hasSelectedProduct) {
+    return (
+      <MobileLayout>
+        <View style={styles.emptyState}>
+          <View style={styles.successIcon}>
+            <MaterialCommunityIcons name="shopping-outline" size={30} color={colors.primaryForeground} />
+          </View>
+          <Text style={styles.emptyTitle}>Aucun produit sélectionné</Text>
+          <Text style={styles.emptyText}>
+            Choisissez un produit dans la boutique pour consulter les options de financement.
+          </Text>
+          <Pressable onPress={() => navigate("Shops")} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Aller vers Shop</Text>
+            <MaterialCommunityIcons name="chevron-right" size={17} color={colors.primaryForeground} />
+          </Pressable>
+        </View>
+        <BottomNav />
+      </MobileLayout>
+    );
+  }
 
   if (!user) {
     return (
