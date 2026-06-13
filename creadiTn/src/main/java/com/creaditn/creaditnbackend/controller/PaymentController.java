@@ -22,6 +22,7 @@ import com.creaditn.creaditnbackend.service.WalletRechargeService;
 import com.creaditn.creaditnbackend.security.AuthenticatedUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -161,12 +162,14 @@ public class PaymentController {
     @PostMapping("/autopay/process-due")
     public ResponseEntity<ApiResponse> processDueAutopayments(
             @RequestParam Long userId,
-            @RequestParam(required = false) LocalDate asOfDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate,
             Authentication authentication) {
         Long currentUserId = authenticatedUserService.requireSameUser(authentication, userId);
-        int paidCount = asOfDate == null
-                ? autopayScheduler.processAutopaymentsForUser(currentUserId)
-                : autopayScheduler.processAutopaymentsForUser(currentUserId, asOfDate);
+        int paidCount = autopayScheduler.processAutopaymentsForUser(
+                currentUserId,
+                asOfDate == null ? LocalDate.now() : asOfDate
+        );
         return ResponseEntity.ok(ApiResponse.success(
                 paidCount == 1 ? "1 installment auto-paid" : paidCount + " installments auto-paid",
                 Map.of("paidInstallments", paidCount)
@@ -176,7 +179,8 @@ public class PaymentController {
     @PostMapping("/wallet/recharge/process")
     public ResponseEntity<WalletRechargeResult> processWalletRecharge(
             @RequestParam Long userId,
-            @RequestParam(required = false) LocalDate asOfDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate,
             Authentication authentication) {
         Long currentUserId = authenticatedUserService.requireSameUser(authentication, userId);
         return ResponseEntity.ok(walletRechargeService.rechargeThrough(
@@ -188,7 +192,8 @@ public class PaymentController {
     @PostMapping("/overdue/process")
     public ResponseEntity<Map<String, Object>> processOverdueInstallments(
             @RequestParam Long userId,
-            @RequestParam(required = false) LocalDate asOfDate,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate,
             Authentication authentication) {
         Long currentUserId = authenticatedUserService.requireSameUser(authentication, userId);
         int overdueCount = overdueInstallmentScheduler.processOverdueInstallments(

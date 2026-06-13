@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import Providers from '@/components/Providers';
 import ConditionalLayout from '@/components/ConditionalLayout';
 
 export const metadata: Metadata = {
@@ -33,9 +32,7 @@ export default function RootLayout({
   return (
     <html lang="fr" className="scroll-smooth">
       <body className="min-h-screen flex flex-col">
-        <Providers>
-          <ConditionalLayout>{children}</ConditionalLayout>
-        </Providers>
+        <ConditionalLayout>{children}</ConditionalLayout>
       </body>
     </html>
   );

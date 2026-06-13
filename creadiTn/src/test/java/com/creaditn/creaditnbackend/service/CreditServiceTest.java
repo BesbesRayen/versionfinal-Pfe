@@ -1,5 +1,6 @@
 package com.creaditn.creaditnbackend.service;
 
+import com.creaditn.creaditnbackend.dto.CreditRequestDto;
 import com.creaditn.creaditnbackend.entity.*;
 import com.creaditn.creaditnbackend.repository.CreditRequestRepository;
 import com.creaditn.creaditnbackend.repository.InstallmentRepository;
@@ -11,10 +12,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,8 +49,12 @@ class CreditServiceTest {
     @Mock
     private FinancialProfileService financialProfileService;
 
+    @Mock
+    private MonthlyCreditCapacityService monthlyCreditCapacityService;
+
     @Test
-    void creditBalanceUsesRemainingPrincipalOnly() {
+    void creditBalanceUsesTheCurrentCalendarMonth() {
+        LocalDate calculationDate = LocalDate.now();
         User user = User.builder().id(5L).build();
         CreditRequest request = CreditRequest.builder()
                 .id(44L)
@@ -72,13 +81,78 @@ class CreditServiceTest {
                 BigDecimal.valueOf(160),
                 LocalDate.parse("2026-02-01")
         ));
-        var balance = service().getCreditBalance(5L);
+        when(monthlyCreditCapacityService.getSnapshot(
+                5L,
+                YearMonth.from(calculationDate),
+                calculationDate
+        ))
+                .thenReturn(new MonthlyCreditCapacityService.MonthlyCapacitySnapshot(
+                        YearMonth.from(calculationDate),
+                        new BigDecimal("2000.00"),
+                        new BigDecimal("500.00"),
+                        new BigDecimal("1500.00"),
+                        false,
+                        null
+                ));
+        var balance = service().getCreditBalance(5L, calculationDate);
 
         assertThat(balance.getUsedCredit()).isEqualTo(320.0);
         assertThat(balance.getOutstandingBalance()).isEqualTo(320.0);
-        assertThat(balance.getAvailableCredit()).isEqualTo(680.0);
+        assertThat(balance.getAvailablePrincipalCredit()).isEqualTo(680.0);
+        assertThat(balance.getAvailableCredit()).isEqualTo(1500.0);
         assertThat(balance.getBuyingPowerLimit()).isEqualTo(1000.0);
         assertThat(balance.getUsedPercent()).isEqualTo(32.0);
+        assertThat(balance.getAvailableMonthlyCapacity()).isEqualByComparingTo("1500.00");
+        assertThat(balance.getMonthlyCapacityMonth()).isEqualTo(YearMonth.from(calculationDate).toString());
+        verify(monthlyCreditCapacityService).getSnapshot(
+                5L,
+                YearMonth.from(calculationDate),
+                calculationDate
+        );
+    }
+
+    @Test
+    void creditApprovalUsesMonthlyInstallmentsInsteadOfRemainingPrincipal() {
+        User user = User.builder()
+                .id(8L)
+                .kycStatus(KycStatus.VERIFIED)
+                .build();
+        FinancialProfile profile = FinancialProfile.builder()
+                .user(user)
+                .monthlySalary(new BigDecimal("1500.00"))
+                .salaryDay(27)
+                .employmentStatus(EmploymentStatus.FULL_TIME)
+                .build();
+        CreditRequestDto dto = CreditRequestDto.builder()
+                .totalAmount(new BigDecimal("1529.00"))
+                .downPayment(new BigDecimal("305.80"))
+                .numberOfInstallments(3)
+                .productName("PC")
+                .build();
+
+        when(userRepository.findById(8L)).thenReturn(Optional.of(user));
+        when(cardService.hasActiveCard(8L)).thenReturn(true);
+        when(cardService.getDefaultActiveCard(8L)).thenReturn(Card.builder().id(2L).user(user).build());
+        when(financialProfileService.isCompleted(8L)).thenReturn(true);
+        when(financialProfileService.getRequiredEntity(8L)).thenReturn(profile);
+        when(creditRequestRepository.save(any(CreditRequest.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service().createCreditRequest(8L, dto);
+
+        assertThat(response.getStatus()).isEqualTo(CreditRequestStatus.APPROVED);
+        assertThat(response.getFinancedAmount()).isEqualByComparingTo("1223.20");
+        assertThat(response.getMonthlyAmount()).isEqualByComparingTo("407.73");
+        verify(monthlyCreditCapacityService).validateNewCredit(
+                eq(8L),
+                eq(List.of(
+                        new BigDecimal("407.73"),
+                        new BigDecimal("407.73"),
+                        new BigDecimal("407.74")
+                )),
+                any(LocalDate.class)
+        );
+        verify(installmentService).generateInstallments(any(CreditRequest.class));
     }
 
     private CreditService service() {
@@ -90,7 +164,8 @@ class CreditServiceTest {
                 notificationService,
                 creadiScoreService,
                 cardService,
-                financialProfileService
+                financialProfileService,
+                monthlyCreditCapacityService
         );
     }
 

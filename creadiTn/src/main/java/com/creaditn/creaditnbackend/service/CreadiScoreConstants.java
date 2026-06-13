@@ -62,4 +62,8 @@ public final class CreadiScoreConstants {
     public static final int PAYMENT_TRUST_LATE_MALUS = 20;
     public static final int PAYMENT_TRUST_BONUS_MAX = 200;
     public static final int PAYMENT_TRUST_BONUS_MIN = -300;
+    public static final int PAYMENT_SCORE_ON_TIME_BONUS = 10;
+    public static final int PAYMENT_SCORE_LATE_MALUS = 20;
+    public static final int PAYMENT_SCORE_MODIFIER_MAX = 200;
+    public static final int PAYMENT_SCORE_MODIFIER_MIN = -300;
 }

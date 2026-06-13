@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { getDeviceLocalDate } from "@/lib/deviceDate";
 import Constants from "expo-constants";
 
 // ── Auth token store ─────────────────────────────────────────────────────────
@@ -40,7 +41,21 @@ const defaultBaseUrl =
       ? "http://10.0.2.2:8082"
       : "http://localhost:8082";
 
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? defaultBaseUrl;
+const getWebBackendUrl = () => {
+  if (Platform.OS !== "web" || typeof window === "undefined") {
+    return null;
+  }
+
+  const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+  return `${protocol}//${window.location.hostname}:8082`;
+};
+
+// A web build may be opened from another phone or computer. In that case a
+// build-time localhost URL points at the visitor's device instead of this API.
+export const API_BASE_URL =
+  getWebBackendUrl() ??
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
+  defaultBaseUrl;
 
 export interface AuthRequest {
   email: string;
@@ -141,6 +156,13 @@ export interface CreditBalanceResult {
   usedPercent: number;
   nextInstallmentAmount?: number;
   nextInstallmentDate?: string | null;
+  monthlyCapacityMonth: string;
+  monthlyCapacityLimit: number;
+  monthlyCommittedAmount: number;
+  availableMonthlyCapacity: number;
+  monthlyCapacityBlocked: boolean;
+  monthlyCapacityBlockReason?: string | null;
+  availablePrincipalCredit: number;
   totalLimit: number;
   usedCredit: number;
   availableCredit: number;
@@ -547,6 +569,7 @@ const requestJson = async <T>(
 
   const response = await fetch(`${API_BASE_URL}${withQuery(path, query)}`, {
     ...options,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders,
@@ -593,8 +616,15 @@ export const resendVerification = async (email: string): Promise<{ message: stri
   });
 };
 
-export const getCreditBalance = async (userId: number) =>
-  requestJson<CreditBalanceResult>("/api/credits/balance", { method: "GET" }, { userId });
+export const getCreditBalance = async (userId: number, asOfDate = getDeviceLocalDate()) =>
+  requestJson<CreditBalanceResult>(
+    "/api/credits/balance",
+    { method: "GET" },
+    { userId, asOfDate },
+  );
+
+export const getWalletBalance = async (userId: number) =>
+  requestJson<{ balance: number }>("/api/payments/wallet-balance", { method: "GET" }, { userId });
 
 const buildShopCatalogFromArticles = (rawArticles: PartnerArticle[], rawStores: PartnerStore[] = []): ShopCatalogDerivedPayload => {
   const activeArticles = rawArticles.filter((item) => item.active !== false);
@@ -1305,18 +1335,18 @@ export const setAutopay = async (userId: number, enabled: boolean, password?: st
     { userId },
   );
 
-export const processDueAutopayments = async (userId: number, asOfDate?: string) =>
+export const processDueAutopayments = async (userId: number, asOfDate = getDeviceLocalDate()) =>
   requestJson<{ success: boolean; message: string; data?: { paidInstallments: number } }>(
     "/api/payments/autopay/process-due",
     { method: "POST" },
-    asOfDate ? { userId, asOfDate } : { userId },
+    { userId, asOfDate },
   );
 
-export const processOverdueInstallments = async (userId: number, asOfDate?: string) =>
+export const processOverdueInstallments = async (userId: number, asOfDate = getDeviceLocalDate()) =>
   requestJson<{ overdueInstallments: number }>(
     "/api/payments/overdue/process",
     { method: "POST" },
-    asOfDate ? { userId, asOfDate } : { userId },
+    { userId, asOfDate },
   );
 
 export interface WalletRechargeResult {
@@ -1328,11 +1358,11 @@ export interface WalletRechargeResult {
   billingCycles: string[];
 }
 
-export const processWalletRecharge = async (userId: number, asOfDate?: string) =>
+export const processWalletRecharge = async (userId: number, asOfDate = getDeviceLocalDate()) =>
   requestJson<WalletRechargeResult>(
     "/api/payments/wallet/recharge/process",
     { method: "POST" },
-    asOfDate ? { userId, asOfDate } : { userId },
+    { userId, asOfDate },
   );
 
 export interface AccountStatus {

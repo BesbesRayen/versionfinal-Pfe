@@ -14,7 +14,7 @@ Date: 2026-06-06
 - Secured Socket.IO with JWT authentication, account-specific rooms, restricted browser origins, automatic reconnection, and required internal emit credentials.
 - Added account ownership enforcement for authenticated `userId` query requests and notification ownership checks.
 - Preserved failed auto-payment attempts as auditable failed transactions.
-- Removed known fallback secrets from backend, Socket.IO, NextAuth, and Docker Compose configuration.
+- Removed known fallback secrets from backend, Socket.IO, and Docker Compose configuration.
 
 ## Issues Fixed
 
@@ -61,7 +61,7 @@ Run it before an external release.
 ## Production Caveats
 
 - Rotate all placeholder or development values in `.env`, especially database,
-  JWT, Socket.IO, admin, and NextAuth credentials.
+  JWT, Socket.IO, and admin credentials.
 - Put the services behind HTTPS and do not expose MySQL or phpMyAdmin publicly.
 - Configure a production mail provider to validate reminder and overdue email delivery.
 - Complete device-level mobile testing on iOS and Android for background/resume behavior.

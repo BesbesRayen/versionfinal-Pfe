@@ -8,6 +8,7 @@ import com.creaditn.creaditnbackend.repository.FinancialProfileRepository;
 import com.creaditn.creaditnbackend.repository.InstallmentRepository;
 import com.creaditn.creaditnbackend.repository.KycDocumentRepository;
 import com.creaditn.creaditnbackend.repository.UserRepository;
+import com.creaditn.creaditnbackend.util.CreditCalculator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +21,9 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -51,7 +54,8 @@ public class CreadiScoreService {
                         + breakdown.financialScore()
                         + breakdown.paymentBehaviorScore()
                         + breakdown.stabilityScore()
-                        + breakdown.riskScore(),
+                        + breakdown.riskScore()
+                        + paymentScoreModifier(user),
                 0,
                 CreadiScoreConstants.TOTAL_SCORE_MAX
         );
@@ -62,7 +66,7 @@ public class CreadiScoreService {
         String reason = generateReason(totalScore, breakdown);
         List<String> tips = generateImprovementTips(breakdown);
         List<String> factors = generateScoreFactors(breakdown);
-        BuyingPowerSnapshot buyingPower = computeBuyingPower(user, profile, installments, totalScore);
+        BuyingPowerSnapshot buyingPower = computeBuyingPower(user, profile, installments, totalScore, true);
 
         CreadiScore entity = CreadiScore.builder()
                 .user(user)
@@ -119,7 +123,8 @@ public class CreadiScoreService {
                         + breakdown.financialScore()
                         + breakdown.paymentBehaviorScore()
                         + breakdown.stabilityScore()
-                        + breakdown.riskScore(),
+                        + breakdown.riskScore()
+                        + paymentScoreModifier(user),
                 0,
                 CreadiScoreConstants.TOTAL_SCORE_MAX
         );
@@ -138,7 +143,7 @@ public class CreadiScoreService {
                 breakdown,
                 generateScoreFactors(breakdown),
                 badge,
-                computeBuyingPower(user, profile, installments, totalScore),
+                computeBuyingPower(user, profile, installments, totalScore, true),
                 generateImprovementTips(breakdown),
                 cs.getCreatedAt()
         );
@@ -194,7 +199,7 @@ public class CreadiScoreService {
                 empty,
                 List.of(eligibility.reason()),
                 null,
-                computeBuyingPower(user, profile, installments, null),
+                computeBuyingPower(user, profile, installments, null, true),
                 tips,
                 LocalDateTime.now()
         );
@@ -425,8 +430,20 @@ public class CreadiScoreService {
         return 90;
     }
 
-    private BuyingPowerSnapshot computeBuyingPower(User user, FinancialProfile profile, List<Installment> installments, Integer totalScore) {
-        double baseBuyingPower = computeBaseBuyingPower(user, profile, installments, totalScore);
+    private BuyingPowerSnapshot computeBuyingPower(
+            User user,
+            FinancialProfile profile,
+            List<Installment> installments,
+            Integer totalScore,
+            boolean applyCurrentDebtToLimit
+    ) {
+        double baseBuyingPower = computeBaseBuyingPower(
+                user,
+                profile,
+                installments,
+                totalScore,
+                applyCurrentDebtToLimit
+        );
         double paymentTrustBonus = clampPaymentTrustBonus(user.getPaymentTrustBonus());
         double buyingPowerLimit = clampDouble(baseBuyingPower + paymentTrustBonus, 0, CreadiScoreConstants.CREDIT_LIMIT_CAP);
         double outstandingBalance = calculateOutstandingBalance(installments).doubleValue();
@@ -447,7 +464,13 @@ public class CreadiScoreService {
         );
     }
 
-    private double computeBaseBuyingPower(User user, FinancialProfile profile, List<Installment> installments, Integer totalScore) {
+    private double computeBaseBuyingPower(
+            User user,
+            FinancialProfile profile,
+            List<Installment> installments,
+            Integer totalScore,
+            boolean applyCurrentDebtToLimit
+    ) {
         double salary = monthlySalary(user, profile);
         if (salary <= 0) {
             return 0;
@@ -469,9 +492,12 @@ public class CreadiScoreService {
             baseCredit *= 0.85;
         }
 
-        int dtiPoints = computeDtiPoints(monthlyDebt(installments), salary);
-        double financialCapacityFactor = 0.65 + (dtiPoints / (double) CreadiScoreConstants.DTI_POINTS_MAX) * 0.35;
-        baseCredit *= financialCapacityFactor;
+        if (applyCurrentDebtToLimit) {
+            int dtiPoints = computeDtiPoints(monthlyDebt(installments), salary);
+            double financialCapacityFactor = 0.65
+                    + (dtiPoints / (double) CreadiScoreConstants.DTI_POINTS_MAX) * 0.35;
+            baseCredit *= financialCapacityFactor;
+        }
         baseCredit *= computeScoreFactor(totalScore);
 
         return Math.min(CreadiScoreConstants.CREDIT_LIMIT_CAP, Math.max(0, baseCredit));
@@ -482,12 +508,56 @@ public class CreadiScoreService {
             return BigDecimal.ZERO;
         }
 
-        return installments.stream()
-                .filter(installment -> installment.getStatus() == InstallmentStatus.PENDING
-                        || installment.getStatus() == InstallmentStatus.OVERDUE)
-                .map(Installment::getAmount)
+        Map<CreditRequest, List<Installment>> byCredit = installments.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        Installment::getCreditRequest,
+                        LinkedHashMap::new,
+                        java.util.stream.Collectors.toList()
+                ));
+
+        return byCredit.entrySet().stream()
+                .map(entry -> calculateOutstandingPrincipal(entry.getKey(), entry.getValue()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal calculateOutstandingPrincipal(
+            CreditRequest creditRequest,
+            List<Installment> creditInstallments
+    ) {
+        if (creditRequest == null
+                || creditRequest.getTotalAmount() == null
+                || creditRequest.getDownPayment() == null
+                || creditRequest.getNumberOfInstallments() == null
+                || creditRequest.getNumberOfInstallments() <= 0) {
+            return creditInstallments.stream()
+                    .filter(this::isUnpaid)
+                    .map(Installment::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        List<Installment> ordered = creditInstallments.stream()
+                .sorted(Comparator.comparing(Installment::getDueDate)
+                        .thenComparing(Installment::getId, Comparator.nullsLast(Long::compareTo)))
+                .toList();
+        List<BigDecimal> principalSchedule = CreditCalculator.calculatePrincipalSchedule(
+                creditRequest.getTotalAmount(),
+                creditRequest.getDownPayment(),
+                creditRequest.getNumberOfInstallments()
+        );
+
+        BigDecimal outstanding = BigDecimal.ZERO;
+        for (int index = 0; index < ordered.size() && index < principalSchedule.size(); index++) {
+            if (isUnpaid(ordered.get(index))) {
+                outstanding = outstanding.add(principalSchedule.get(index));
+            }
+        }
+        return outstanding;
+    }
+
+    private boolean isUnpaid(Installment installment) {
+        return installment.getStatus() == InstallmentStatus.PENDING
+                || installment.getStatus() == InstallmentStatus.OVERDUE;
     }
 
     private Installment nextActiveInstallment(List<Installment> installments) {
@@ -527,19 +597,38 @@ public class CreadiScoreService {
         List<Installment> installments = installmentRepository.findByCreditRequestUserId(userId);
         Eligibility eligibility = determineEligibility(user, document, profile);
         if (eligibility.status() != ScoreStatus.COMPLETE) {
-            return computeBuyingPower(user, profile, installments, null);
+            return computeBuyingPower(user, profile, installments, null, false);
         }
-        ScoreBreakdown breakdown = calculateBreakdown(user, document, profile, installments);
-        int totalScore = clamp(
-                breakdown.kycScore()
-                        + breakdown.financialScore()
-                        + breakdown.paymentBehaviorScore()
-                        + breakdown.stabilityScore()
-                        + breakdown.riskScore(),
-                0,
-                CreadiScoreConstants.TOTAL_SCORE_MAX
-        );
-        return computeBuyingPower(user, profile, installments, totalScore);
+        Integer approvedScore = creadiScoreRepository.findTopByUserIdOrderByCreatedAtDesc(userId)
+                .map(CreadiScore::getTotalScore)
+                .orElseGet(() -> {
+                    ScoreBreakdown breakdown = calculateBreakdown(user, document, profile, installments);
+                    return clamp(
+                            breakdown.kycScore()
+                                    + breakdown.financialScore()
+                                    + breakdown.paymentBehaviorScore()
+                                    + breakdown.stabilityScore()
+                                    + breakdown.riskScore()
+                                    + paymentScoreModifier(user),
+                            0,
+                            CreadiScoreConstants.TOTAL_SCORE_MAX
+                    );
+                });
+        boolean hasOutstandingCredit = installments.stream()
+                .anyMatch(installment -> installment.getStatus() == InstallmentStatus.PENDING
+                        || installment.getStatus() == InstallmentStatus.OVERDUE);
+        if (hasOutstandingCredit) {
+            approvedScore = creadiScoreRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                    .map(CreadiScore::getTotalScore)
+                    .filter(java.util.Objects::nonNull)
+                    .max(Integer::compareTo)
+                    .orElse(approvedScore);
+        }
+
+        // The approved limit stays stable during an active credit. Outstanding debt is
+        // subtracted below to produce available credit. A payment must release principal
+        // without lowering the ceiling while another approved credit remains open.
+        return computeBuyingPower(user, profile, installments, approvedScore, false);
     }
 
     private double computeScoreFactor(Integer totalScore) {
@@ -554,6 +643,15 @@ public class CreadiScoreService {
             case HIGH_RISK -> 0.40;
             case CRITICAL -> 0.00;
         };
+    }
+
+    private int paymentScoreModifier(User user) {
+        int modifier = user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier();
+        return clamp(
+                modifier,
+                CreadiScoreConstants.PAYMENT_SCORE_MODIFIER_MIN,
+                CreadiScoreConstants.PAYMENT_SCORE_MODIFIER_MAX
+        );
     }
 
     private CreadiScoreResponse buildResponse(

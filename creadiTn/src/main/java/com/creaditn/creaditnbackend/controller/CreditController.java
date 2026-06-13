@@ -5,9 +5,11 @@ import com.creaditn.creaditnbackend.service.CreditService;
 import com.creaditn.creaditnbackend.service.InstallmentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -50,8 +52,12 @@ public class CreditController {
     }
 
     @GetMapping("/balance")
-    public ResponseEntity<CreditBalanceResponse> getCreditBalance(@RequestParam Long userId) {
-        return ResponseEntity.ok(creditService.getCreditBalance(userId));
+    public ResponseEntity<CreditBalanceResponse> getCreditBalance(
+            @RequestParam Long userId,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate asOfDate
+    ) {
+        return ResponseEntity.ok(creditService.getCreditBalance(userId, asOfDate));
     }
 
     @GetMapping("/{creditId}/installments")

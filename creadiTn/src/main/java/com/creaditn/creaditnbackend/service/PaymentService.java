@@ -16,9 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +37,7 @@ public class PaymentService {
     private final TransactionService transactionService;
     private final InstallmentRepository installmentRepository;
     private final JwtUtil jwtUtil;
+    private final MonthlyCreditCapacityService monthlyCreditCapacityService;
 
     @Transactional
     public PaymentDto makePayment(Long userId, PaymentRequest request) {
@@ -84,7 +88,10 @@ public class PaymentService {
         transactionService.record(userId, request.getAmount(), "PAYMENT", "SUCCESS",
                 "Installment payment", txRef);
 
-        creadiScoreService.calculateScore(userId);
+        YearMonth installmentMonth = YearMonth.from(installment.getDueDate());
+        if (monthlyCreditCapacityService.isMonthSettled(userId, installmentMonth)) {
+            creadiScoreService.calculateScore(userId);
+        }
 
         notificationService.sendNotification(userId,
                 "Payment Confirmed",
@@ -157,6 +164,10 @@ public class PaymentService {
         BigDecimal debtBefore = unpaidInstallments.stream()
             .map(i -> i.getAmount().add(i.getPenalty() != null ? i.getPenalty() : BigDecimal.ZERO))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Set<YearMonth> affectedMonths = unpaidInstallments.stream()
+                .map(Installment::getDueDate)
+                .map(YearMonth::from)
+                .collect(Collectors.toSet());
 
         cardService.getDefaultActiveCard(userId);
 
@@ -184,7 +195,10 @@ public class PaymentService {
         transactionService.record(userId, debtBefore, transactionType, "SUCCESS",
                 transactionDescription + " ("+paidCount+" installments)", bulkRef);
 
-        creadiScoreService.calculateScore(userId);
+        if (affectedMonths.stream().allMatch(month ->
+                monthlyCreditCapacityService.isMonthSettled(userId, month))) {
+            creadiScoreService.calculateScore(userId);
+        }
 
         notificationService.sendNotification(
             userId,
@@ -261,23 +275,30 @@ public class PaymentService {
     }
 
     private boolean isLatePayment(Installment installment) {
-        return installment.getStatus() == InstallmentStatus.OVERDUE || installment.getDueDate().isBefore(LocalDate.now());
+        return installment.getDueDate().isBefore(LocalDate.now());
     }
 
     private void applyTrustImpact(User user, Installment installment, boolean late) {
         int trustBonus = user.getPaymentTrustBonus() == null ? 0 : user.getPaymentTrustBonus();
+        int scoreModifier = user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier();
         if (late) {
             if (!Boolean.TRUE.equals(installment.getLatePenaltyApplied())) {
                 trustBonus -= CreadiScoreConstants.PAYMENT_TRUST_LATE_MALUS;
+                scoreModifier -= CreadiScoreConstants.PAYMENT_SCORE_LATE_MALUS;
                 installment.setLatePenaltyApplied(true);
             }
         } else {
             trustBonus += CreadiScoreConstants.PAYMENT_TRUST_ON_TIME_BONUS;
+            scoreModifier += CreadiScoreConstants.PAYMENT_SCORE_ON_TIME_BONUS;
         }
 
         user.setPaymentTrustBonus(Math.max(
                 CreadiScoreConstants.PAYMENT_TRUST_BONUS_MIN,
                 Math.min(CreadiScoreConstants.PAYMENT_TRUST_BONUS_MAX, trustBonus)
+        ));
+        user.setPaymentScoreModifier(Math.max(
+                CreadiScoreConstants.PAYMENT_SCORE_MODIFIER_MIN,
+                Math.min(CreadiScoreConstants.PAYMENT_SCORE_MODIFIER_MAX, scoreModifier)
         ));
         userRepository.save(user);
     }

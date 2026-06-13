@@ -27,6 +27,9 @@ public interface InstallmentRepository extends JpaRepository<Installment, Long> 
     List<Installment> findByStatusAndDueDateBefore(InstallmentStatus status, LocalDate date);
 
     @EntityGraph(attributePaths = {"creditRequest", "creditRequest.user"})
+    List<Installment> findByStatusAndDueDateGreaterThanEqual(InstallmentStatus status, LocalDate date);
+
+    @EntityGraph(attributePaths = {"creditRequest", "creditRequest.user"})
     List<Installment> findByStatusInAndDueDateLessThanEqual(List<InstallmentStatus> statuses, LocalDate date);
 
     @EntityGraph(attributePaths = {"creditRequest", "creditRequest.user"})

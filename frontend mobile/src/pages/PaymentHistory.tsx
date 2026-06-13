@@ -129,7 +129,9 @@ const PaymentHistory = () => {
             <View>
               <Text style={styles.heroLabel}>Reste à payer</Text>
               <Text style={styles.heroValue}>{remainingBalance.toFixed(2)} TND</Text>
-              <Text style={styles.heroSub}>Disponible : {(balance?.availableCredit ?? 0).toFixed(2)} TND</Text>
+              <Text style={styles.heroSub}>
+                Solde mensuel : {(balance?.availableMonthlyCapacity ?? balance?.availableCredit ?? 0).toFixed(2)} TND
+              </Text>
             </View>
             <ProgressRing percent={progress} color={colors.success} label="payé" />
           </View>

@@ -406,20 +406,6 @@ public class AuthService {
         return ApiResponse.success("Email modifie. Un code de verification a ete envoye.", Map.of("email", newEmail));
     }
 
-    public AuthResponse googleLogin(GoogleAuthRequest request) {
-        if (request.getIdToken() == null || request.getIdToken().isBlank()) {
-            throw new BadRequestException("Token Google invalide");
-        }
-        User user = userRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new BadRequestException("Aucun utilisateur - inscrivez-vous d'abord"));
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail());
-        return AuthResponse.builder()
-                .userId(user.getId()).email(user.getEmail())
-                .firstName(user.getFirstName()).lastName(user.getLastName())
-                .message("Connexion Google (demo)").token(token)
-                .build();
-    }
-
     private User findByIdentifier(String identifier) {
         if (identifier.contains("@")) {
             return userRepository.findByEmailIgnoreCase(identifier)

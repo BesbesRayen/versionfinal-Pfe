@@ -11,7 +11,9 @@ import com.creaditn.creaditnbackend.repository.PaymentRepository;
 import com.creaditn.creaditnbackend.repository.UserRepository;
 import com.creaditn.creaditnbackend.service.CardService;
 import com.creaditn.creaditnbackend.service.CreadiScoreService;
+import com.creaditn.creaditnbackend.service.CreadiScoreConstants;
 import com.creaditn.creaditnbackend.service.NotificationService;
+import com.creaditn.creaditnbackend.service.MonthlyCreditCapacityService;
 import com.creaditn.creaditnbackend.service.TransactionService;
 import com.creaditn.creaditnbackend.service.WalletService;
 import com.creaditn.creaditnbackend.service.WalletRechargeService;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -42,6 +45,7 @@ public class AutopayScheduler {
     private final TransactionService transactionService;
     private final CreadiScoreService creadiScoreService;
     private final WalletRechargeService walletRechargeService;
+    private final MonthlyCreditCapacityService monthlyCreditCapacityService;
 
     /**
      * Runs every day at 08:00 AM.
@@ -136,10 +140,23 @@ public class AutopayScheduler {
             transactionService.record(userId, total, "PAYMENT", "SUCCESS",
                     "Autopay - installment due " + installment.getDueDate(), ref);
 
+            int trustBonus = user.getPaymentTrustBonus() == null ? 0 : user.getPaymentTrustBonus();
+            user.setPaymentTrustBonus(Math.min(
+                    CreadiScoreConstants.PAYMENT_TRUST_BONUS_MAX,
+                    trustBonus + CreadiScoreConstants.PAYMENT_TRUST_ON_TIME_BONUS
+            ));
             int modifier = user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier();
-            user.setPaymentScoreModifier(modifier + 10);
+            user.setPaymentScoreModifier(Math.min(
+                    CreadiScoreConstants.PAYMENT_SCORE_MODIFIER_MAX,
+                    modifier + CreadiScoreConstants.PAYMENT_SCORE_ON_TIME_BONUS
+            ));
             userRepository.save(user);
-            creadiScoreService.calculateScore(userId);
+            if (monthlyCreditCapacityService.isMonthSettled(
+                    userId,
+                    YearMonth.from(installment.getDueDate())
+            )) {
+                creadiScoreService.calculateScore(userId);
+            }
 
             notificationService.sendNotification(userId,
                     "Autopay Successful",

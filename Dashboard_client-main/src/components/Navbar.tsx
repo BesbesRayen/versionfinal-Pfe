@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { signOut, useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 import {
   BarChart2,
@@ -38,7 +37,6 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [jwtUser, setJwtUser] = useState<JwtUser | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
-  const { data: session } = useSession();
   const pathname = usePathname();
 
   useEffect(() => {
@@ -97,22 +95,17 @@ export default function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const isLoggedIn = Boolean(jwtUser || session?.user);
+  const isLoggedIn = Boolean(jwtUser);
   const displayName = jwtUser
     ? `${jwtUser.firstName} ${jwtUser.lastName}`.trim()
-    : session?.user?.name || '';
+    : '';
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('adminToken');
     localStorage.removeItem('adminUser');
     setJwtUser(null);
-
-    if (session) {
-      await signOut({ callbackUrl: '/login' });
-      return;
-    }
 
     window.location.replace('/login');
   };

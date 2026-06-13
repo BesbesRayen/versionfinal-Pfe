@@ -16,6 +16,7 @@ import com.creaditn.creaditnbackend.repository.UserRepository;
 import com.creaditn.creaditnbackend.service.CardService;
 import com.creaditn.creaditnbackend.service.CreadiScoreService;
 import com.creaditn.creaditnbackend.service.NotificationService;
+import com.creaditn.creaditnbackend.service.MonthlyCreditCapacityService;
 import com.creaditn.creaditnbackend.service.TransactionService;
 import com.creaditn.creaditnbackend.service.WalletService;
 import com.creaditn.creaditnbackend.service.WalletRechargeService;
@@ -64,6 +65,9 @@ class AutopaySchedulerTest {
     @Mock
     private WalletRechargeService walletRechargeService;
 
+    @Mock
+    private MonthlyCreditCapacityService monthlyCreditCapacityService;
+
     @Test
     void processAutopaymentsPaysDueInstallmentAndDeductsWallet() {
         User user = user(true);
@@ -80,6 +84,7 @@ class AutopaySchedulerTest {
             return wallet;
         }).when(walletService).debit(eq(7L), any(BigDecimal.class));
         when(cardService.getDefaultActiveCard(7L)).thenReturn(card(user));
+        when(monthlyCreditCapacityService.isMonthSettled(eq(7L), any())).thenReturn(true);
 
         scheduler().processAutopayments();
 
@@ -200,7 +205,8 @@ class AutopaySchedulerTest {
                 notificationService,
                 transactionService,
                 creadiScoreService,
-                walletRechargeService
+                walletRechargeService,
+                monthlyCreditCapacityService
         );
     }
 

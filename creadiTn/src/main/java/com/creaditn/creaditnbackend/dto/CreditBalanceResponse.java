@@ -16,6 +16,13 @@ public class CreditBalanceResponse {
     private double usedPercent;
     private BigDecimal nextInstallmentAmount;
     private LocalDate nextInstallmentDate;
+    private String monthlyCapacityMonth;
+    private BigDecimal monthlyCapacityLimit;
+    private BigDecimal monthlyCommittedAmount;
+    private BigDecimal availableMonthlyCapacity;
+    private boolean monthlyCapacityBlocked;
+    private String monthlyCapacityBlockReason;
+    private double availablePrincipalCredit;
 
     // Legacy aliases kept for existing clients.
     private double totalLimit;

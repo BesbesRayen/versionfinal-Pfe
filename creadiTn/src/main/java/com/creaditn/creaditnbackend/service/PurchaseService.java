@@ -7,7 +7,6 @@ import com.creaditn.creaditnbackend.exception.ResourceNotFoundException;
 import com.creaditn.creaditnbackend.repository.*;
 import com.creaditn.creaditnbackend.util.CreditCalculator;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,9 +32,6 @@ public class PurchaseService {
     private final NotificationService notificationService;
     private final TransactionService transactionService;
     private final WalletService walletService;
-
-    @Value("${app.credit.max-per-user:2000}")
-    private BigDecimal maxCreditPerUser;
 
     @Transactional
     public PurchaseOrderResponse checkout(Long userId, PurchaseArticleRequest request) {
@@ -145,15 +141,12 @@ public class PurchaseService {
                 .setScale(4, RoundingMode.HALF_UP);
         BigDecimal totalPayable = financedAmount.add(interestAmount).setScale(2, RoundingMode.HALF_UP);
 
-        if (financedAmount.compareTo(maxCreditPerUser) > 0) {
-            throw new BadRequestException("Financed amount exceeds max allowed per user (" + maxCreditPerUser + " TND)");
-        }
-
-        BigDecimal availableCredit = BigDecimal.valueOf(creditService.getCreditBalance(user.getId()).getAvailableCredit());
-        if (financedAmount.compareTo(availableCredit) > 0) {
-            throw new BadRequestException("Insufficient available credit. Remaining financed balance: "
-                    + availableCredit.intValue() + " TND");
-        }
+        creditService.validateMonthlyCapacity(
+                user.getId(),
+                totalPrice,
+                downPayment,
+                installmentMonths
+        );
 
         walletService.debit(user.getId(), downPayment);
 

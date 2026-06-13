@@ -35,6 +35,7 @@ class PaymentServiceTrustBonusTest {
     @Mock private TransactionService transactionService;
     @Mock private InstallmentRepository installmentRepository;
     @Mock private JwtUtil jwtUtil;
+    @Mock private MonthlyCreditCapacityService monthlyCreditCapacityService;
 
     @Test
     void onTimePaymentAddsTenDtBonus() {
@@ -45,6 +46,7 @@ class PaymentServiceTrustBonusTest {
         service().makePayment(1L, new PaymentRequest(10L, BigDecimal.valueOf(43), "CARD"));
 
         assertThat(user.getPaymentTrustBonus()).isEqualTo(10);
+        assertThat(user.getPaymentScoreModifier()).isEqualTo(10);
     }
 
     @Test
@@ -75,6 +77,7 @@ class PaymentServiceTrustBonusTest {
         service().makePayment(2L, new PaymentRequest(20L, BigDecimal.valueOf(43), "CARD"));
 
         assertThat(user.getPaymentTrustBonus()).isEqualTo(-20);
+        assertThat(user.getPaymentScoreModifier()).isEqualTo(-20);
         assertThat(installment.getLatePenaltyApplied()).isTrue();
     }
 
@@ -104,6 +107,32 @@ class PaymentServiceTrustBonusTest {
         assertThat(negative.getPaymentTrustBonus()).isEqualTo(-300);
     }
 
+    @Test
+    void scoreIsNotUpdatedWhileAnotherInstallmentInTheMonthIsUnpaid() {
+        User user = user(7L, 0);
+        Installment installment = installment(
+                user, 70L, LocalDate.now().plusDays(1), InstallmentStatus.PENDING, false);
+        mockPayment(user, installment);
+        when(monthlyCreditCapacityService.isMonthSettled(eq(7L), any())).thenReturn(false);
+
+        service().makePayment(7L, new PaymentRequest(70L, BigDecimal.valueOf(43), "CARD"));
+
+        verify(creadiScoreService, never()).calculateScore(7L);
+    }
+
+    @Test
+    void scoreIsUpdatedAfterTheLastInstallmentInTheMonthIsPaid() {
+        User user = user(8L, 0);
+        Installment installment = installment(
+                user, 80L, LocalDate.now().plusDays(1), InstallmentStatus.PENDING, false);
+        mockPayment(user, installment);
+        when(monthlyCreditCapacityService.isMonthSettled(eq(8L), any())).thenReturn(true);
+
+        service().makePayment(8L, new PaymentRequest(80L, BigDecimal.valueOf(43), "CARD"));
+
+        verify(creadiScoreService).calculateScore(8L);
+    }
+
     private void mockPayment(User user, Installment installment) {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
         when(installmentService.getInstallmentEntity(installment.getId())).thenReturn(installment);
@@ -117,6 +146,7 @@ class PaymentServiceTrustBonusTest {
                 .email("user" + id + "@example.com")
                 .firstName("Test")
                 .lastName("User")
+                .paymentScoreModifier(0)
                 .paymentTrustBonus(paymentTrustBonus)
                 .build();
     }
@@ -144,7 +174,8 @@ class PaymentServiceTrustBonusTest {
                 walletService,
                 transactionService,
                 installmentRepository,
-                jwtUtil
+                jwtUtil,
+                monthlyCreditCapacityService
         );
     }
 }

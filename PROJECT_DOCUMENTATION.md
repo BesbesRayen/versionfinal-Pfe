@@ -47,7 +47,6 @@ The clean architecture applied here is a layered multi-app architecture:
 
 Important residual architecture note:
 
-- `Dashboard_client-main/src/app/api/auth/[...nextauth]/route.ts` still uses `src/lib/db.js` for the Google OAuth callback. The backend `google-login` endpoint is demo-only and does not yet validate the Google identity payload, so this direct DB path was kept to avoid changing business behavior.
 
 Layer roles:
 
@@ -414,7 +413,6 @@ Auth column values:
 |---|---|---|---|---|
 | POST | `/api/auth/register` | `RegisterRequest` | `AuthResponse` | Public |
 | POST | `/api/auth/login` | `AuthRequest` | `AuthResponse` | Public |
-| POST | `/api/auth/google-login` | `GoogleAuthRequest` | `AuthResponse` | Public, demo |
 | POST | `/api/auth/forgot-password/request` | `ForgotPasswordRequest` | `ApiResponse` | Public |
 | POST | `/api/auth/forgot-password/confirm` | `ForgotPasswordConfirmRequest` | `ApiResponse` | Public |
 | POST | `/api/auth/forgot-email` | `ForgotEmailRequest` | `ApiResponse` | Public |
@@ -532,7 +530,6 @@ Auth column values:
 | GET/POST/PUT/PATCH/DELETE | `/api/backend/[...path]` | Generic backend proxy to `BACKEND_URL`. | Mirrors backend |
 | POST | `/api/auth/login` | Compatibility proxy to backend login. | Public |
 | POST | `/api/auth/register` | Compatibility proxy to backend register. | Public |
-| GET/POST | `/api/auth/[...nextauth]` | NextAuth Google OAuth. | Public |
 | POST | `/api/contact` | Compatibility proxy to backend contact messages. | Public |
 | GET | `/api/messages` | Compatibility proxy to backend contact messages. | Public |
 | GET | `/api/test-connection` | Backend health proxy. | Public |
@@ -561,8 +558,6 @@ Root `.env.example` now lists the expected local variables.
 - `BACKEND_URL`: dashboard server-side URL for backend proxy calls.
 - `NEXT_PUBLIC_API_URL`: browser-visible dashboard API base, usually `/api/backend`.
 - `NEXT_PUBLIC_SOCKET_URL`: browser-visible Socket.IO URL.
-- `NEXTAUTH_SECRET`: NextAuth signing secret.
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: optional Google OAuth.
 - `DIDIT_API_KEY`, `DIDIT_API_URL`, `DIDIT_FALLBACK_ON_ERROR`: KYC provider settings.
 - `KYC_*`: KYC thresholds, file limits, and allowed MIME types.
 - `EXPO_PUBLIC_API_BASE_URL`: mobile app backend URL for Expo.
@@ -651,8 +646,6 @@ Updated:
 - `Dashboard_client-main/src/app/support/page.tsx`: dark support page and fixed message status display.
 - `Dashboard_client-main/src/app/api/contact/route.ts`, `api/messages/route.ts`, `api/test-connection/route.ts`: backend proxy routes.
 - `Dashboard_client-main/src/app/api/auth/login/route.ts`, `api/auth/register/route.ts`: backend proxy routes.
-- `Dashboard_client-main/src/app/api/auth/[...nextauth]/route.ts`: removed debug output and disabled NextAuth debug.
-- `Dashboard_client-main/src/lib/db.js`: removed startup logging.
 - `socket-server/index.js`: debug logging is now behind `SOCKET_DEBUG`; startup uses clean stdout.
 - `creadiTn/src/main/java/.../service/EmailService.java`: cleaned encoding/comments and escaped dynamic email values.
 - `creadiTn/src/main/java/.../service/SupportService.java`: cleaned text/encoding.
@@ -697,7 +690,6 @@ Smoke traces:
 - Replace legacy `creadiTn/src/main/resources/schema.sql` with a current migration-based schema.
 - Convert `scripts/db/proposed-clean-schema-diff.sql` into Flyway/Liquibase migrations before production.
 - Rename `messages` to `contact_messages` and `user_wallet` to `user_wallets` in a coordinated migration.
-- Move remaining NextAuth Google persistence out of dashboard direct MySQL access after backend Google identity verification is implemented.
 - Protect `GET /api/support/contact-messages` with admin auth once dashboard admin message retrieval uses admin credentials cleanly.
 - Add browser-level Playwright visual checks for homepage/admin/mobile web after UI theme changes.
 - Add full authenticated purchase/credit E2E test with controlled email verification setup.

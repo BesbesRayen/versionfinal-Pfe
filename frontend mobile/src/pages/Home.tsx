@@ -88,12 +88,11 @@ const Home = () => {
       if (!silent) setLoading(true);
       setErrorMessage("");
       try {
-        const localToday = toLocalDateString();
-        await processOverdueInstallments(user.userId, localToday).catch(() => null);
-        await processWalletRecharge(user.userId, localToday).catch(() => null);
+        await processOverdueInstallments(user.userId).catch(() => null);
+        await processWalletRecharge(user.userId).catch(() => null);
         const autopay = await getAutopayStatus(user.userId).catch(() => ({ enabled: false }));
         if (autopay.enabled) {
-          await processDueAutopayments(user.userId, localToday).catch(() => null);
+          await processDueAutopayments(user.userId).catch(() => null);
         }
         const [installmentData, paymentData, scoreData, unreadData, kycData, profileData, balanceData, popularData] = await Promise.all([
           getMyInstallments(user.userId).catch(() => undefined),
@@ -225,11 +224,13 @@ const Home = () => {
         {/* Credit overview */}
         {(() => {
           const limit = creditBalance?.buyingPowerLimit ?? creditBalance?.totalLimit ?? 0;
-          const used = creditBalance?.outstandingBalance ?? creditBalance?.usedCredit ?? 0;
-          const available = creditBalance?.availableCredit ?? (limit - used);
-          const usedPct = creditBalance?.usedPercent !== undefined
-            ? Math.min(100, Number(creditBalance.usedPercent.toFixed(1)))
-            : limit > 0 ? Math.min(100, Number(((used / limit) * 100).toFixed(1))) : 0;
+          const monthlyLimit = creditBalance?.monthlyCapacityLimit ?? limit;
+          const monthlyCommitted = creditBalance?.monthlyCommittedAmount ?? 0;
+          const monthlyAvailable = creditBalance?.availableMonthlyCapacity ?? 0;
+          const monthlyMonth = creditBalance?.monthlyCapacityMonth ?? "";
+          const usedPct = monthlyLimit > 0
+            ? Math.min(100, Number(((monthlyCommitted / monthlyLimit) * 100).toFixed(1)))
+            : 0;
           const barColor = usedPct >= 80 ? colors.error : usedPct >= 50 ? colors.warning : colors.success;
           return (
             <FadeInView>
@@ -237,8 +238,8 @@ const Home = () => {
               <View style={styles.creditMainHead}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.creditMainLabel}>Disponible</Text>
-                  <Text style={styles.creditMainLimit}>{toMoney(available)}</Text>
-                  <Text style={styles.creditMainSublabel}>Solde disponible</Text>
+                  <Text style={styles.creditMainLimit}>{toMoney(monthlyAvailable)}</Text>
+                  <Text style={styles.creditMainSublabel}>Solde credit mensuel</Text>
                 </View>
                 <View style={styles.creditMainRight}>
                   <ProgressRing percent={usedPct} size={82} color={barColor} label="utilise" />
@@ -248,9 +249,15 @@ const Home = () => {
                 <View style={[styles.creditBarFill, { width: `${usedPct}%`, backgroundColor: barColor }]} />
               </View>
               <View style={styles.creditBarRow}>
-                <Text style={styles.creditBarPct}>Utilise: {toMoney(used)} - {usedPct}%</Text>
-                <Text style={styles.creditAvailText}>Pouvoir d'achat: {toMoney(limit)}</Text>
+                <Text style={styles.creditBarPct}>Echeances: {toMoney(monthlyCommitted)} - {usedPct}%</Text>
+                <Text style={styles.creditAvailText}>Plafond mensuel: {toMoney(monthlyLimit)}</Text>
               </View>
+              <Text style={styles.creditMonthlyBlocked}>Mois de calcul: {monthlyMonth || "-"}</Text>
+              {creditBalance?.monthlyCapacityBlocked && (
+                <Text style={styles.creditMonthlyBlocked}>
+                  Reglez les echeances en retard pour reutiliser le credit.
+                </Text>
+              )}
               {nextInstallment && (
                 <View style={styles.creditNextRow}>
                   <MaterialCommunityIcons name="calendar-clock" size={14} color="rgba(255,255,255,0.7)" />
@@ -413,6 +420,10 @@ const styles = StyleSheet.create({
   creditBarPct: { color: "rgba(255,255,255,0.7)", fontSize: 11, fontWeight: "700" },
   creditAvailText: { color: "rgba(255,255,255,0.7)", fontSize: 11 },
   creditAvailAmount: { color: "#ffffff", fontWeight: "800" },
+  creditMonthlyRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
+  creditMonthlyLabel: { color: "rgba(255,255,255,0.72)", fontSize: 11 },
+  creditMonthlyValue: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  creditMonthlyBlocked: { color: "rgba(255,255,255,0.78)", fontSize: 10, marginTop: 5 },
   creditNextRow: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.15)", flexDirection: "row", alignItems: "center", gap: 6 },
   creditNextText: { flex: 1, color: "rgba(255,255,255,0.85)", fontSize: 12 },
   creditPayBtn: { backgroundColor: "rgba(255,255,255,0.2)", paddingVertical: 7, paddingHorizontal: 14, borderRadius: radii.md },

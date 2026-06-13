@@ -137,8 +137,8 @@ const Profile = () => {
     setErrorMessage("");
     try {
       const localToday = toLocalDateString();
-      await processOverdueInstallments(user.userId, localToday).catch(() => null);
-      await processWalletRecharge(user.userId, localToday).catch((error) => {
+      await processOverdueInstallments(user.userId).catch(() => null);
+      await processWalletRecharge(user.userId).catch((error) => {
         setErrorMessage(error instanceof Error ? error.message : "Recharge mensuelle impossible.");
         return null;
       });
@@ -157,7 +157,7 @@ const Profile = () => {
       let latestAccountStatus = accountStatusData;
 
       if (autopayData?.enabled && isDateDue(accountStatusData?.nextInstallmentDate, localToday)) {
-        await processDueAutopayments(user.userId, localToday).catch((error) => {
+        await processDueAutopayments(user.userId).catch((error) => {
           setErrorMessage(error instanceof Error ? error.message : "Paiement automatique impossible.");
           return null;
         });
@@ -188,13 +188,12 @@ const Profile = () => {
     if (!user) return;
 
     const processBillingForPhoneDate = async () => {
-      const localToday = toLocalDateString();
-
       try {
-        await processOverdueInstallments(user.userId, localToday);
-        await processWalletRecharge(user.userId, localToday);
+        await processOverdueInstallments(user.userId);
+        await processWalletRecharge(user.userId);
+        const localToday = toLocalDateString();
         if (autopayEnabled && isDateDue(accountStatus?.nextInstallmentDate, localToday)) {
-          await processDueAutopayments(user.userId, localToday);
+          await processDueAutopayments(user.userId);
         }
         const refreshed = await getAccountStatus(user.userId).catch(() => null);
         if (refreshed) setAccountStatus(refreshed);
@@ -238,9 +237,10 @@ const Profile = () => {
   const kycConfig = KYC_STATUS_CONFIG[kycLabel] ?? KYC_STATUS_CONFIG.NOT_SUBMITTED;
   const isGoodPayer = kycLabel === "VERIFIED" && !!hasCard && !!hasFinancialProfile;
   const buyingPowerLimit = creditBalance?.buyingPowerLimit ?? creditBalance?.totalLimit ?? 0;
-  const outstandingBalance = creditBalance?.outstandingBalance ?? creditBalance?.usedCredit ?? 0;
-  const availableBalance = creditBalance?.availableCredit ?? Math.max(0, buyingPowerLimit - outstandingBalance);
-  const usedPercent = creditBalance?.usedPercent ?? (buyingPowerLimit > 0 ? (outstandingBalance / buyingPowerLimit) * 100 : 0);
+  const availableBalance = creditBalance?.availableMonthlyCapacity ?? creditBalance?.availableCredit ?? 0;
+  const monthlyLimit = creditBalance?.monthlyCapacityLimit ?? buyingPowerLimit;
+  const monthlyCommitted = creditBalance?.monthlyCommittedAmount ?? 0;
+  const usedPercent = monthlyLimit > 0 ? (monthlyCommitted / monthlyLimit) * 100 : 0;
   const nextDate = accountStatus?.nextInstallmentDate
     ? new Date(accountStatus.nextInstallmentDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
     : "Aucune";
@@ -285,8 +285,7 @@ const Profile = () => {
       let paidInstallments = response.data?.paidInstallments ?? 0;
 
       if (value) {
-        const localToday = toLocalDateString();
-        const dueResponse = await processDueAutopayments(user.userId, localToday);
+        const dueResponse = await processDueAutopayments(user.userId);
         paidInstallments += dueResponse.data?.paidInstallments ?? 0;
         const refreshed = await getAccountStatus(user.userId).catch(() => null);
         if (refreshed) setAccountStatus(refreshed);
@@ -375,7 +374,7 @@ const Profile = () => {
                 <Text style={styles.heroBalanceLabel}>Disponible</Text>
                 <Text style={styles.heroBalance}>{money(availableBalance)}</Text>
                 <Text style={styles.heroBalanceSub}>
-                  Pouvoir d'achat: {money(buyingPowerLimit)} - Utilise: {money(outstandingBalance)}
+                  Plafond mensuel: {money(monthlyLimit)} - Echeances: {money(monthlyCommitted)}
                 </Text>
               </View>
               <View style={styles.heroProgressRing}>

@@ -28,7 +28,7 @@ describe("credit preview", () => {
       monthly: 82.4,
       totalToPay: 494.4,
       finalProductCost: 614.4,
-      remainingCredit: 520,
+      remainingCredit: 917.6,
     });
     expect(toDt(preview.monthly)).toBe("82.40 DT");
   });

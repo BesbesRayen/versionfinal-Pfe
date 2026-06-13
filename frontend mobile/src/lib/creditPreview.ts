@@ -97,7 +97,6 @@ export const getCreditPreviewValues = (
     monthly,
     totalToPay,
     finalProductCost,
-    remainingCredit: creditBalance == null ? null : Math.max(0, creditBalance.availableCredit - financedAmount),
+    remainingCredit: creditBalance == null ? null : Math.max(0, creditBalance.availableCredit - monthly),
   };
 };
-

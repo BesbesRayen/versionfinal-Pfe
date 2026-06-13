@@ -17,7 +17,9 @@ import { useAppNavigation } from "@/lib/app-navigation";
 import { useAuth } from "@/lib/auth";
 import {
   calculateCreadiScore,
+  CreditBalanceResult,
   CreadiScoreResult,
+  getCreditBalance,
   getCreadiScoreLatest,
   ScoreLevel,
 } from "@/lib/api";
@@ -177,6 +179,7 @@ const CreadiScoreDashboard = () => {
   const { navigate } = useAppNavigation();
   const userId = user?.userId;
   const [data, setData] = useState<CreadiScoreResult | null>(null);
+  const [creditBalance, setCreditBalance] = useState<CreditBalanceResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,9 +192,15 @@ const CreadiScoreDashboard = () => {
     setLoading(true);
     setError(null);
     try {
-      setData(await getCreadiScoreLatest(userId));
+      const [score, balance] = await Promise.all([
+        getCreadiScoreLatest(userId),
+        getCreditBalance(userId),
+      ]);
+      setData(score);
+      setCreditBalance(balance);
     } catch {
       setData(null);
+      setCreditBalance(null);
     } finally {
       setLoading(false);
     }
@@ -206,7 +215,9 @@ const CreadiScoreDashboard = () => {
     setCalculating(true);
     setError(null);
     try {
-      setData(await calculateCreadiScore(userId));
+      const score = await calculateCreadiScore(userId);
+      setData(score);
+      setCreditBalance(await getCreditBalance(userId));
     } catch (calculationError) {
       setError(calculationError instanceof Error ? calculationError.message : "Impossible de calculer le score.");
     } finally {
@@ -221,10 +232,15 @@ const CreadiScoreDashboard = () => {
   const isBlocked = displayStatus === "BLOCKED";
   const levelColor = LEVEL_COLORS[displayLevel];
 
-  const buyingPower = data?.buyingPowerLimit ?? data?.maxCreditLimit ?? 0;
-  const availableCredit = data?.availableCredit ?? data?.maxCreditLimit ?? 0;
-  const outstandingBalance = data?.outstandingBalance ?? 0;
-  const usedPercent = data?.usedPercent ?? 0;
+  const buyingPower = creditBalance?.monthlyCapacityLimit
+    ?? data?.buyingPowerLimit
+    ?? data?.maxCreditLimit
+    ?? 0;
+  const availableCredit = creditBalance?.availableMonthlyCapacity ?? buyingPower;
+  const outstandingBalance = creditBalance?.monthlyCommittedAmount ?? 0;
+  const usedPercent = buyingPower > 0
+    ? Math.min(100, (outstandingBalance / buyingPower) * 100)
+    : 0;
 
   const breakdown = [
     {
@@ -414,13 +430,13 @@ const CreadiScoreDashboard = () => {
                   </Text>
                   <View style={styles.metricsRow}>
                     <View style={styles.metricCell}>
-                      <Text style={styles.metricLabel}>Disponible</Text>
+                      <Text style={styles.metricLabel}>Solde mensuel</Text>
                       <Text style={styles.metricValue}>{availableCredit.toFixed(2)}</Text>
                       <Text style={styles.metricUnit}>TND</Text>
                     </View>
                     <View style={styles.metricDivider} />
                     <View style={styles.metricCell}>
-                      <Text style={styles.metricLabel}>Utilise</Text>
+                      <Text style={styles.metricLabel}>Echeances du mois</Text>
                       <Text style={styles.metricValue}>{outstandingBalance.toFixed(2)}</Text>
                       <Text style={styles.metricUnit}>TND</Text>
                     </View>

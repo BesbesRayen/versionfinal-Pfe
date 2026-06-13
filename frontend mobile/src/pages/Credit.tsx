@@ -8,6 +8,7 @@ import {
   CreditBalanceResult,
   getDashboard,
   getCreditBalance,
+  getWalletBalance,
   PurchaseOrderResult,
   PurchasePaymentType,
   requestCredit,
@@ -62,7 +63,11 @@ const sanitizeCreditError = (error: unknown) => {
   }
 
   if (/available credit|credit disponible|limit|limite/i.test(message)) {
-    return "Votre limite disponible ne couvre pas encore ce montant.";
+    return "La mensualite choisie depasse votre capacite mensuelle disponible.";
+  }
+
+  if (/wallet balance|solde.*portefeuille|insufficient wallet/i.test(message)) {
+    return "Votre solde de paiement ne couvre pas l'apport demande.";
   }
 
   return "Impossible de charger vos informations";
@@ -144,8 +149,8 @@ const Credit = () => {
   const [requestId, setRequestId] = useState<number | null>(null);
   const [lastOrder, setLastOrder] = useState<PurchaseOrderResult | null>(null);
   const [paymentMode] = useState<PurchasePaymentType>("CREDIT");
-  const [creditLimit, setCreditLimit] = useState<number | null>(null);
   const [creditBalance, setCreditBalance] = useState<CreditBalanceResult | null>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [blockingStep, setBlockingStep] = useState<"ADD_CARD" | "COMPLETE_FINANCIAL_PROFILE" | null>(null);
@@ -161,8 +166,11 @@ const Credit = () => {
   const downPayment = useMemo(() => toBackendMoney(selectedPrice * 0.2), [selectedPrice]);
   const planComparisons = useMemo(() => getPlanComparisons(selectedPrice, downPayment), [selectedPrice, downPayment]);
   const activePlan = planComparisons.find((plan) => plan.months === selectedPlan) ?? planComparisons[0];
-  const isOverLimit = creditLimit !== null && activePlan.principal > creditLimit;
-  const noCreditAvailable = creditLimit !== null && creditLimit <= 0;
+  const isOverMonthlyCapacity = creditBalance !== null
+    && (creditBalance.monthlyCapacityBlocked
+      || activePlan.monthly > creditBalance.availableMonthlyCapacity);
+  const isDownPaymentInsufficient = walletBalance !== null
+    && walletBalance < activePlan.downPayment;
   const blockingMessage = blockingStep === "ADD_CARD"
     ? "Ajoutez une carte de paiement pour continuer."
     : blockingStep === "COMPLETE_FINANCIAL_PROFILE"
@@ -173,19 +181,31 @@ const Credit = () => {
     if (!user || !hasSelectedProduct) return;
 
     setErrorMessage("");
+    setCreditBalance(null);
     try {
-      const [balanceData, dashboard] = await Promise.all([
+      const [balanceResult, dashboardResult, walletResult] = await Promise.allSettled([
         getCreditBalance(user.userId),
         getDashboard(user.userId),
+        getWalletBalance(user.userId),
       ]);
 
-      setCreditLimit(balanceData.availableCredit);
+      if (balanceResult.status === "rejected") {
+        throw balanceResult.reason;
+      }
+
+      const balanceData = balanceResult.value;
       setCreditBalance(balanceData);
-      setBlockingStep(
-        dashboard.nextStep === "ADD_CARD" || dashboard.nextStep === "COMPLETE_FINANCIAL_PROFILE"
-          ? dashboard.nextStep
-          : null,
-      );
+      if (walletResult.status === "fulfilled") {
+        setWalletBalance(walletResult.value.balance);
+      }
+      if (dashboardResult.status === "fulfilled") {
+        const dashboard = dashboardResult.value;
+        setBlockingStep(
+          dashboard.nextStep === "ADD_CARD" || dashboard.nextStep === "COMPLETE_FINANCIAL_PROFILE"
+            ? dashboard.nextStep
+            : null,
+        );
+      }
     } catch (error) {
       setErrorMessage(sanitizeCreditError(error));
     }
@@ -350,8 +370,8 @@ const Credit = () => {
           </View>
 
           <View style={styles.limitPill}>
-            <Text style={styles.limitPillLabel}>Disponible</Text>
-            <Text style={styles.limitPillValue}>{toDt(creditBalance?.availableCredit ?? 0)}</Text>
+            <Text style={styles.limitPillLabel}>Solde credit mensuel</Text>
+            <Text style={styles.limitPillValue}>{toDt(creditBalance?.availableMonthlyCapacity ?? 0)}</Text>
           </View>
         </View>
 
@@ -465,9 +485,17 @@ const Credit = () => {
           })}
         </View>
 
-        {isOverLimit && (
+        {isOverMonthlyCapacity && (
           <SoftAlert
-            message="Votre limite disponible ne couvre pas encore ce montant."
+            message={creditBalance?.monthlyCapacityBlocked
+              ? "Reglez les echeances en retard avant un nouveau financement."
+              : "La mensualite choisie depasse votre capacite mensuelle disponible."}
+            onAction={loadAccountData}
+          />
+        )}
+        {isDownPaymentInsufficient && (
+          <SoftAlert
+            message={`Votre solde de paiement (${toDt(walletBalance ?? 0)}) ne couvre pas l'apport de ${toDt(activePlan.downPayment)}.`}
             onAction={loadAccountData}
           />
         )}
@@ -483,8 +511,12 @@ const Credit = () => {
 
           <Pressable
             onPress={handleConfirmRequest}
-            disabled={loading || isOverLimit || noCreditAvailable}
-            style={[styles.primaryButton, (loading || isOverLimit || noCreditAvailable) && styles.primaryButtonDisabled]}
+            disabled={loading || isOverMonthlyCapacity || isDownPaymentInsufficient}
+            style={[
+              styles.primaryButton,
+              (loading || isOverMonthlyCapacity || isDownPaymentInsufficient)
+                && styles.primaryButtonDisabled,
+            ]}
           >
             <Text style={styles.primaryButtonText}>
               {loading ? "Traitement..." : isArticleCheckout ? "Acheter avec credit" : "Confirmer la demande"}

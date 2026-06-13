@@ -24,11 +24,6 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
-    @PostMapping("/google-login")
-    public ResponseEntity<AuthResponse> googleLogin(@RequestBody GoogleAuthRequest request) {
-        return ResponseEntity.ok(authService.googleLogin(request));
-    }
-
     @PostMapping("/forgot-password/request")
     public ResponseEntity<ApiResponse> requestForgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
         return ResponseEntity.ok(authService.requestPasswordReset(request));

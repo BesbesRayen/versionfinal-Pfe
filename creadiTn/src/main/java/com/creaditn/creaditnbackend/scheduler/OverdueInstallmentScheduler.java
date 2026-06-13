@@ -43,6 +43,7 @@ public class OverdueInstallmentScheduler {
     public int processOverdueInstallments(Long targetUserId, LocalDate asOfDate) {
         LocalDate processingDate = asOfDate == null ? LocalDate.now() : asOfDate;
         log.info("Running overdue installment check through {} for user {}...", processingDate, targetUserId);
+        repairFutureOverdueInstallments(targetUserId, processingDate);
         List<Installment> overdueInstallments = installmentRepository
                 .findByStatusAndDueDateBefore(InstallmentStatus.PENDING, processingDate)
                 .stream()
@@ -60,6 +61,11 @@ public class OverdueInstallmentScheduler {
                 int trustBonus = user.getPaymentTrustBonus() == null ? 0 : user.getPaymentTrustBonus();
                 trustBonus -= CreadiScoreConstants.PAYMENT_TRUST_LATE_MALUS;
                 user.setPaymentTrustBonus(Math.max(CreadiScoreConstants.PAYMENT_TRUST_BONUS_MIN, trustBonus));
+                int scoreModifier = user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier();
+                user.setPaymentScoreModifier(Math.max(
+                        CreadiScoreConstants.PAYMENT_SCORE_MODIFIER_MIN,
+                        scoreModifier - CreadiScoreConstants.PAYMENT_SCORE_LATE_MALUS
+                ));
                 installment.setLatePenaltyApplied(true);
                 userRepository.save(user);
                 creadiScoreService.calculateScore(userId);
@@ -75,6 +81,42 @@ public class OverdueInstallmentScheduler {
         installmentRepository.saveAll(overdueInstallments);
         log.info("Marked {} installments as overdue.", overdueInstallments.size());
         return overdueInstallments.size();
+    }
+
+    private void repairFutureOverdueInstallments(Long targetUserId, LocalDate processingDate) {
+        List<Installment> incorrectlyOverdue = installmentRepository
+                .findByStatusAndDueDateGreaterThanEqual(InstallmentStatus.OVERDUE, processingDate)
+                .stream()
+                .filter(installment -> targetUserId == null
+                        || installment.getCreditRequest().getUser().getId().equals(targetUserId))
+                .toList();
+
+        for (Installment installment : incorrectlyOverdue) {
+            User user = installment.getCreditRequest().getUser();
+            if (Boolean.TRUE.equals(installment.getLatePenaltyApplied())) {
+                int trustBonus = user.getPaymentTrustBonus() == null ? 0 : user.getPaymentTrustBonus();
+                user.setPaymentTrustBonus(Math.min(
+                        CreadiScoreConstants.PAYMENT_TRUST_BONUS_MAX,
+                        trustBonus + CreadiScoreConstants.PAYMENT_TRUST_LATE_MALUS
+                ));
+                int scoreModifier = user.getPaymentScoreModifier() == null ? 0 : user.getPaymentScoreModifier();
+                user.setPaymentScoreModifier(Math.min(
+                        CreadiScoreConstants.PAYMENT_SCORE_MODIFIER_MAX,
+                        scoreModifier + CreadiScoreConstants.PAYMENT_SCORE_LATE_MALUS
+                ));
+                userRepository.save(user);
+                creadiScoreService.calculateScore(user.getId());
+            }
+
+            installment.setStatus(InstallmentStatus.PENDING);
+            installment.setPenalty(BigDecimal.ZERO);
+            installment.setLatePenaltyApplied(false);
+        }
+
+        if (!incorrectlyOverdue.isEmpty()) {
+            installmentRepository.saveAll(incorrectlyOverdue);
+            log.info("Repaired {} future installments incorrectly marked overdue.", incorrectlyOverdue.size());
+        }
     }
 
 }

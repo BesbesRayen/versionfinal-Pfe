@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.Comparator;
 import java.util.List;
 
@@ -29,6 +30,7 @@ public class CreditService {
     private final CreadiScoreService creadiScoreService;
     private final CardService cardService;
     private final FinancialProfileService financialProfileService;
+    private final MonthlyCreditCapacityService monthlyCreditCapacityService;
 
     public CreditSimulationResponse simulate(CreditSimulationRequest request) {
         return simulate(request, null);
@@ -114,16 +116,9 @@ public class CreditService {
         );
         BigDecimal interestRate = CreditCalculator.getInterestRate(dto.getNumberOfInstallments());
         BigDecimal totalPayable = principal.add(interestAmount);
+        LocalDate firstDueDate = CreditCalculator.calculateFirstDueDate(resolveSalaryDay(userId));
 
-        CreditBalanceResponse balance = getCreditBalance(userId);
-        BigDecimal availableCredit = BigDecimal.valueOf(balance.getAvailableCredit());
-
-        if (availableCredit.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Aucun credit disponible. Completez votre KYC et renseignez votre salaire.");
-        }
-        if (principal.compareTo(availableCredit) > 0) {
-            throw new BadRequestException("Requested amount exceeds your available credit of " + availableCredit.intValue() + " TND");
-        }
+        monthlyCreditCapacityService.validateNewCredit(userId, repaymentSchedule, firstDueDate);
 
         CreditRequestStatus status = determineStatus(userId);
 
@@ -212,23 +207,56 @@ public class CreditService {
     }
 
     public CreditBalanceResponse getCreditBalance(Long userId) {
+        return getCreditBalance(userId, LocalDate.now());
+    }
+
+    public CreditBalanceResponse getCreditBalance(Long userId, LocalDate asOfDate) {
         userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        LocalDate calculationDate = asOfDate == null ? LocalDate.now() : asOfDate;
         CreadiScoreService.BuyingPowerSnapshot buyingPower = creadiScoreService.computeBuyingPowerForUser(userId);
+        MonthlyCreditCapacityService.MonthlyCapacitySnapshot monthlyCapacity =
+                monthlyCreditCapacityService.getSnapshot(
+                        userId,
+                        YearMonth.from(calculationDate),
+                        calculationDate
+                );
 
         return CreditBalanceResponse.builder()
                 .buyingPowerLimit(buyingPower.buyingPowerLimit())
                 .baseBuyingPower(buyingPower.baseBuyingPower())
                 .paymentTrustBonus(buyingPower.paymentTrustBonus())
                 .outstandingBalance(buyingPower.outstandingBalance())
-                .availableCredit(buyingPower.availableCredit())
+                .availablePrincipalCredit(buyingPower.availableCredit())
+                .availableCredit(monthlyCapacity.available().doubleValue())
                 .usedPercent(buyingPower.usedPercent())
                 .nextInstallmentAmount(buyingPower.nextInstallmentAmount())
                 .nextInstallmentDate(buyingPower.nextInstallmentDate())
+                .monthlyCapacityMonth(monthlyCapacity.month().toString())
+                .monthlyCapacityLimit(monthlyCapacity.limit())
+                .monthlyCommittedAmount(monthlyCapacity.committed())
+                .availableMonthlyCapacity(monthlyCapacity.available())
+                .monthlyCapacityBlocked(monthlyCapacity.blocked())
+                .monthlyCapacityBlockReason(monthlyCapacity.blockReason())
                 .totalLimit(buyingPower.buyingPowerLimit())
                 .usedCredit(buyingPower.outstandingBalance())
                 .build();
+    }
+
+    public void validateMonthlyCapacity(
+            Long userId,
+            BigDecimal totalAmount,
+            BigDecimal downPayment,
+            int numberOfInstallments
+    ) {
+        List<BigDecimal> repaymentSchedule = CreditCalculator.calculateRepaymentSchedule(
+                totalAmount,
+                downPayment,
+                numberOfInstallments
+        );
+        LocalDate firstDueDate = CreditCalculator.calculateFirstDueDate(resolveSalaryDay(userId));
+        monthlyCreditCapacityService.validateNewCredit(userId, repaymentSchedule, firstDueDate);
     }
 
     public BigDecimal calculateRemainingPrincipal(CreditRequest request) {
@@ -306,7 +334,8 @@ public class CreditService {
         }
 
         try {
-            return financialProfileService.getRequiredEntity(userId).getSalaryDay();
+            FinancialProfile profile = financialProfileService.getRequiredEntity(userId);
+            return profile == null ? null : profile.getSalaryDay();
         } catch (BadRequestException | ResourceNotFoundException ignored) {
             return null;
         }

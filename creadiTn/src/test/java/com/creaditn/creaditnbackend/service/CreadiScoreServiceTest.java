@@ -75,6 +75,25 @@ class CreadiScoreServiceTest {
     }
 
     @Test
+    void paymentScoreModifierChangesDisplayedScoreByTenPoints() {
+        User user = verifiedUser(20L, 2000.0, LocalDateTime.now().minusYears(2));
+        FinancialProfile profile = profile(
+                user,
+                BigDecimal.valueOf(2000),
+                EmploymentStatus.FULL_TIME,
+                LocalDateTime.now().minusYears(1)
+        );
+        mockScoreInputs(user, profile, strongDocument(user, 0), List.of());
+        when(creadiScoreRepository.findByUserIdOrderByCreatedAtDesc(20L)).thenReturn(List.of());
+
+        int before = service().calculateScore(20L).getScore();
+        user.setPaymentScoreModifier(10);
+        int after = service().calculateScore(20L).getScore();
+
+        assertThat(after).isEqualTo(before + 10);
+    }
+
+    @Test
     void scoreNeverBelowZeroEvenWithSevereLateHistory() {
         User user = verifiedUser(3L, 500.0, LocalDateTime.now().minusMonths(1));
         user.setKycFailedAttempts(20);
@@ -216,6 +235,86 @@ class CreadiScoreServiceTest {
                         .setScale(2, java.math.RoundingMode.HALF_UP)
                         .doubleValue()
         );
+    }
+
+    @Test
+    void activeCreditReducesAvailableBalanceWithoutReducingApprovedBuyingPower() {
+        User user = verifiedUser(17L, 2000.0, LocalDateTime.now().minusYears(3));
+        FinancialProfile profile = profile(
+                user,
+                BigDecimal.valueOf(2000),
+                EmploymentStatus.FULL_TIME,
+                LocalDateTime.now().minusYears(1)
+        );
+        KycDocument document = strongDocument(user, 0);
+        CreadiScore approvedScore = CreadiScore.builder()
+                .user(user)
+                .totalScore(800)
+                .level(ScoreLevel.GOOD)
+                .risk(RiskLevel.MODERATE)
+                .build();
+
+        when(userRepository.findById(17L)).thenReturn(Optional.of(user));
+        when(financialProfileRepository.findByUserId(17L)).thenReturn(Optional.of(profile));
+        when(kycDocumentRepository.findTopByUserIdOrderByCreatedAtDesc(17L)).thenReturn(Optional.of(document));
+        when(creadiScoreRepository.findTopByUserIdOrderByCreatedAtDesc(17L)).thenReturn(Optional.of(approvedScore));
+        when(creadiScoreRepository.findByUserIdOrderByCreatedAtDesc(17L)).thenReturn(List.of(approvedScore));
+        when(installmentRepository.findByCreditRequestUserId(17L))
+                .thenReturn(List.of())
+                .thenReturn(pendingInstallments(user, new BigDecimal("1223.20")));
+
+        var beforePurchase = service().computeBuyingPowerForUser(17L);
+        var afterPurchase = service().computeBuyingPowerForUser(17L);
+
+        assertThat(afterPurchase.buyingPowerLimit()).isEqualTo(beforePurchase.buyingPowerLimit());
+        assertThat(afterPurchase.outstandingBalance()).isEqualTo(1223.20);
+        assertThat(afterPurchase.availableCredit()).isEqualTo(
+                BigDecimal.valueOf(beforePurchase.buyingPowerLimit())
+                        .subtract(new BigDecimal("1223.20"))
+                        .setScale(2, java.math.RoundingMode.HALF_UP)
+                        .doubleValue()
+        );
+    }
+
+    @Test
+    void payingOneCreditDoesNotLowerLimitWhileAnotherCreditIsActive() {
+        User user = verifiedUser(18L, 1500.0, LocalDateTime.now().minusYears(3));
+        user.setPaymentTrustBonus(200);
+        FinancialProfile profile = profile(
+                user,
+                BigDecimal.valueOf(1500),
+                EmploymentStatus.FULL_TIME,
+                LocalDateTime.now().minusYears(1)
+        );
+        KycDocument document = strongDocument(user, 0);
+        CreadiScore latestLowerScore = CreadiScore.builder()
+                .user(user)
+                .totalScore(661)
+                .level(ScoreLevel.MEDIUM)
+                .risk(RiskLevel.HIGH)
+                .build();
+        CreadiScore approvedGoodScore = CreadiScore.builder()
+                .user(user)
+                .totalScore(741)
+                .level(ScoreLevel.GOOD)
+                .risk(RiskLevel.MODERATE)
+                .build();
+
+        when(userRepository.findById(18L)).thenReturn(Optional.of(user));
+        when(financialProfileRepository.findByUserId(18L)).thenReturn(Optional.of(profile));
+        when(kycDocumentRepository.findTopByUserIdOrderByCreatedAtDesc(18L)).thenReturn(Optional.of(document));
+        when(creadiScoreRepository.findTopByUserIdOrderByCreatedAtDesc(18L))
+                .thenReturn(Optional.of(latestLowerScore));
+        when(creadiScoreRepository.findByUserIdOrderByCreatedAtDesc(18L))
+                .thenReturn(List.of(latestLowerScore, approvedGoodScore));
+        when(installmentRepository.findByCreditRequestUserId(18L))
+                .thenReturn(pendingInstallments(user, new BigDecimal("1223.20")));
+
+        var balance = service().computeBuyingPowerForUser(18L);
+
+        assertThat(balance.buyingPowerLimit()).isEqualTo(2468.00);
+        assertThat(balance.outstandingBalance()).isEqualTo(1223.20);
+        assertThat(balance.availableCredit()).isEqualTo(1244.80);
     }
 
     @Test
