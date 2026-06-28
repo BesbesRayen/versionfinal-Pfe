@@ -229,7 +229,7 @@ public class CreditService {
                 .paymentTrustBonus(buyingPower.paymentTrustBonus())
                 .outstandingBalance(buyingPower.outstandingBalance())
                 .availablePrincipalCredit(buyingPower.availableCredit())
-                .availableCredit(monthlyCapacity.available().doubleValue())
+                .availableCredit(buyingPower.availableCredit())
                 .usedPercent(buyingPower.usedPercent())
                 .nextInstallmentAmount(buyingPower.nextInstallmentAmount())
                 .nextInstallmentDate(buyingPower.nextInstallmentDate())

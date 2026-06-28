@@ -249,7 +249,7 @@ const Home = () => {
                 <View style={[styles.creditBarFill, { width: `${usedPct}%`, backgroundColor: barColor }]} />
               </View>
               <View style={styles.creditBarRow}>
-                <Text style={styles.creditBarPct}>Echeances: {toMoney(monthlyCommitted)} - {usedPct}%</Text>
+                <Text style={styles.creditBarPct}>Echeances du mois: {toMoney(monthlyCommitted)} - {usedPct}%</Text>
                 <Text style={styles.creditAvailText}>Plafond mensuel: {toMoney(monthlyLimit)}</Text>
               </View>
               <Text style={styles.creditMonthlyBlocked}>Mois de calcul: {monthlyMonth || "-"}</Text>

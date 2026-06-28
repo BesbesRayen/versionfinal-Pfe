@@ -1,6 +1,7 @@
 package com.creaditn.creaditnbackend.dto;
 
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
@@ -19,6 +20,9 @@ public class RegisterRequest {
 
     @NotBlank
     private String password;
+
+    @AssertTrue(message = "Client Terms & Payment Rules must be accepted")
+    private boolean termsAccepted;
 
     private String address;
     private String profession;

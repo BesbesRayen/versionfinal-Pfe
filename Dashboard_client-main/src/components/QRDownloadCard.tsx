@@ -57,15 +57,6 @@ const modeBadges = {
   },
 } as const;
 
-const isMobileWebExpoUrl = (value: string) => {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'exp:' && url.port === '8083';
-  } catch {
-    return false;
-  }
-};
-
 export default function QRDownloadCard({ deepLink = mobileDownloadConfig.defaultDeepLink, source = 'homepage-qr' }: QRDownloadCardProps) {
   const [downloadUrl, setDownloadUrl] = useState(mobileDownloadConfig.downloadLandingUrl);
   const [status, setStatus] = useState<QrStatus>('loading');
@@ -98,10 +89,8 @@ export default function QRDownloadCard({ deepLink = mobileDownloadConfig.default
     setStatus('loading');
     const origin = typeof window === 'undefined' ? '' : window.location.origin;
     const mobileWebUrl = getMobileWebUrl(origin);
-    const nextUrl = mobileDownloadConfig.mode === 'expo-go' && isMobileWebExpoUrl(mobileDownloadConfig.expoGoUrl) && mobileWebUrl
+    const nextUrl = mobileDownloadConfig.mode === 'expo-go' && mobileWebUrl
       ? mobileWebUrl
-      : mobileDownloadConfig.mode === 'expo-go'
-      ? getExpoGoUrl(deepLink)
       : getMobileDownloadLandingUrl(origin, { deepLink, source });
     setDownloadUrl(nextUrl);
 
@@ -252,7 +241,7 @@ export default function QRDownloadCard({ deepLink = mobileDownloadConfig.default
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left">
             <ExternalLink className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-200" />
             <p className="text-[11px] font-semibold leading-relaxed text-slate-400">
-              En mode Expo Go, le QR ouvre le projet dans Expo Go. Pour un vrai telechargement Android, genere un APK avec{' '}
+              Sur le reseau local, le QR ouvre directement CreditTN mobile dans le navigateur. Pour un vrai telechargement Android, genere un APK avec{' '}
               <code className="rounded bg-white/10 px-1.5 py-0.5 text-cyan-100">eas build -p android --profile preview</code>.
             </p>
           </div>

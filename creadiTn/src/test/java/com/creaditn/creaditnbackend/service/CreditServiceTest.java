@@ -99,9 +99,10 @@ class CreditServiceTest {
         assertThat(balance.getUsedCredit()).isEqualTo(320.0);
         assertThat(balance.getOutstandingBalance()).isEqualTo(320.0);
         assertThat(balance.getAvailablePrincipalCredit()).isEqualTo(680.0);
-        assertThat(balance.getAvailableCredit()).isEqualTo(1500.0);
+        assertThat(balance.getAvailableCredit()).isEqualTo(680.0);
         assertThat(balance.getBuyingPowerLimit()).isEqualTo(1000.0);
         assertThat(balance.getUsedPercent()).isEqualTo(32.0);
+        assertThat(balance.getMonthlyCommittedAmount()).isEqualByComparingTo("500.00");
         assertThat(balance.getAvailableMonthlyCapacity()).isEqualByComparingTo("1500.00");
         assertThat(balance.getMonthlyCapacityMonth()).isEqualTo(YearMonth.from(calculationDate).toString());
         verify(monthlyCreditCapacityService).getSnapshot(

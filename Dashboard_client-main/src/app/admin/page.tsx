@@ -1,8 +1,8 @@
 ﻿'use client';
 
 import { useEffect, useState } from 'react';
-import { Users, CreditCard, CalendarClock, ShieldCheck, TrendingUp, AlertCircle, Package, FileText, Bell, Activity, ShoppingBag, Database, Trash2 } from 'lucide-react';
-import { getAdminStats, AdminStats, fetchBackend, resetDevTestData } from '@/lib/api';
+import { Users, CreditCard, CalendarClock, ShieldCheck, TrendingUp, AlertCircle, Package, FileText, Bell, Activity, ShoppingBag } from 'lucide-react';
+import { getAdminStats, AdminStats, fetchBackend } from '@/lib/api';
 
 interface ActivityEvent {
   type: string;
@@ -37,10 +37,6 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
-  const [resetToken, setResetToken] = useState('');
-  const [resetConfirm, setResetConfirm] = useState('');
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetMessage, setResetMessage] = useState('');
 
   useEffect(() => {
     getAdminStats()
@@ -81,24 +77,6 @@ export default function AdminDashboard() {
     { label: 'Alertes crédit', value: stats?.unreadCreditNotifications ?? 0, icon: Bell, color: 'from-orange-500 to-orange-700', bg: 'bg-orange-500/10' },
     { label: 'Achats crédit', value: stats?.creditOrders ?? 0, icon: ShoppingBag, color: 'from-blue-500 to-blue-700', bg: 'bg-blue-500/10' },
   ];
-
-  const handleDevReset = async () => {
-    if (resetConfirm !== 'RESET_DATABASE' || !resetToken || resetLoading) return;
-    setResetLoading(true);
-    setResetMessage('');
-    try {
-      const result = await resetDevTestData(resetToken, true);
-      setResetMessage(`Reset termine: ${result.deletedTables.length} tables nettoyees, ${result.deletedUploadFiles} fichiers supprimes.`);
-      setResetToken('');
-      setResetConfirm('');
-      const freshStats = await getAdminStats();
-      setStats(freshStats);
-    } catch (err) {
-      setResetMessage(err instanceof Error ? err.message : 'Reset impossible.');
-    } finally {
-      setResetLoading(false);
-    }
-  };
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -236,53 +214,6 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Sandbox reset */}
-      <div className="bg-[#111827] border border-red-500/20 rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-              <Database className="w-5 h-5 text-red-300" />
-              Mode sandbox: Reset Test Data
-            </h3>
-            <p className="text-sm text-gray-400 leading-6">
-              Supprime tous les comptes de test et nettoie les donnees utilisateur, credits, achats,
-              KYC, cartes, notifications, articles et fichiers uploads en environnement dev.
-            </p>
-          </div>
-          <span className="inline-flex items-center gap-2 rounded-full border border-red-400/20 bg-red-400/10 px-3 py-1 text-xs font-bold text-red-200">
-            Action irreversible
-          </span>
-        </div>
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
-          <input
-            type="password"
-            value={resetToken}
-            onChange={(event) => setResetToken(event.target.value)}
-            placeholder="APP_DEV_RESET_TOKEN"
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white outline-none placeholder:text-gray-600 focus:border-red-300/50"
-          />
-          <input
-            value={resetConfirm}
-            onChange={(event) => setResetConfirm(event.target.value)}
-            placeholder="Tapez RESET_DATABASE"
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white outline-none placeholder:text-gray-600 focus:border-red-300/50"
-          />
-          <button
-            onClick={handleDevReset}
-            disabled={resetLoading || resetConfirm !== 'RESET_DATABASE' || !resetToken}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-black text-white transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Trash2 className="w-4 h-4" />
-            {resetLoading ? 'Reset...' : 'Reset Test Data'}
-          </button>
-        </div>
-        {resetMessage && (
-          <p className={`mt-3 text-sm font-semibold ${resetMessage.includes('termine') ? 'text-emerald-300' : 'text-red-300'}`}>
-            {resetMessage}
-          </p>
-        )}
-      </div>
     </div>
   );
 }

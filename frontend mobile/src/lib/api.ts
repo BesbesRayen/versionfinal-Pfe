@@ -67,6 +67,7 @@ export interface RegisterRequest {
   lastName: string;
   email: string;
   password: string;
+  termsAccepted: boolean;
   address?: string;
   profession?: string;
 }
@@ -901,16 +902,6 @@ export const setDefaultCard = async (userId: number, cardId: number) =>
     `/api/cards/set-default`,
     {
       method: "PUT",
-      body: JSON.stringify({ cardId }),
-    },
-    { userId },
-  );
-
-export const blockCard = async (userId: number, cardId: number) =>
-  requestJson<CardDto>(
-    `/api/cards/block`,
-    {
-      method: "DELETE",
       body: JSON.stringify({ cardId }),
     },
     { userId },

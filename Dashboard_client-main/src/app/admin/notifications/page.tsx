@@ -7,6 +7,7 @@ import {
   getAdminNotifications,
   markAdminNotificationAsRead,
 } from '@/lib/api';
+import { translateNotificationMessage, translateNotificationTitle } from '@/lib/notification-fr';
 
 export default function AdminNotificationsPage() {
   const [notifications, setNotifications] = useState<AdminCreditNotification[]>([]);
@@ -21,7 +22,7 @@ export default function AdminNotificationsPage() {
       setNotifications(data);
       setError('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load notifications');
+      setError(e instanceof Error ? e.message : 'Impossible de charger les notifications');
     } finally {
       setLoading(false);
     }
@@ -37,7 +38,11 @@ export default function AdminNotificationsPage() {
     const q = search.toLowerCase().trim();
     if (!q) return notifications;
     return notifications.filter((notification) =>
-      [notification.title, notification.message, notification.transactionId]
+      [
+        translateNotificationTitle(notification.title),
+        translateNotificationMessage(notification.message),
+        notification.transactionId,
+      ]
         .join(' ')
         .toLowerCase()
         .includes(q),
@@ -51,7 +56,7 @@ export default function AdminNotificationsPage() {
         prev.map((item) => (item.id === id ? { ...item, read: true } : item)),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unable to mark notification');
+      setError(e instanceof Error ? e.message : 'Impossible de marquer la notification comme lue');
     }
   };
 
@@ -96,7 +101,7 @@ export default function AdminNotificationsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-8 bg-[#111827] border border-white/5 rounded-2xl text-center text-gray-500 text-sm">
-            Aucune notification trouvee
+            Aucune notification trouvée
           </div>
         ) : (
           filtered.map((notification) => (
@@ -121,7 +126,7 @@ export default function AdminNotificationsPage() {
                           : 'text-indigo-300'
                     }`} />
                     <p className={`text-sm font-semibold ${notification.read ? 'text-gray-300' : 'text-white'}`}>
-                      {notification.title}
+                      {translateNotificationTitle(notification.title)}
                     </p>
                     {!notification.read && (
                       <span className={`px-2 py-0.5 rounded-full text-[10px] border ${
@@ -129,11 +134,11 @@ export default function AdminNotificationsPage() {
                           ? 'bg-red-400/20 text-red-300 border-red-400/30'
                           : 'bg-indigo-400/20 text-indigo-300 border-indigo-400/30'
                       }`}>
-                        {notification.type === 'INSTALLMENT_OVERDUE' ? 'EN RETARD' : 'NEW'}
+                        {notification.type === 'INSTALLMENT_OVERDUE' ? 'EN RETARD' : 'NOUVEAU'}
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-400 mt-2">{notification.message}</p>
+                  <p className="text-sm text-gray-400 mt-2">{translateNotificationMessage(notification.message)}</p>
                   <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
                     <span>
                       {new Date(notification.createdAt).toLocaleString('fr-FR', {
@@ -145,7 +150,7 @@ export default function AdminNotificationsPage() {
                       })}
                     </span>
                     {notification.transactionId && <span>TX: {notification.transactionId}</span>}
-                    {notification.orderId && <span>Order #{notification.orderId}</span>}
+                    {notification.orderId && <span>Commande n°{notification.orderId}</span>}
                   </div>
                 </div>
 
@@ -155,7 +160,7 @@ export default function AdminNotificationsPage() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    Marquer lu
+                    Marquer comme lue
                   </button>
                 )}
               </div>

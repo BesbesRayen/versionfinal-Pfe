@@ -14,6 +14,7 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 public class CardReplaceRequest extends CardVerificationRequest {
     @NotBlank
+    @Pattern(regexp = "^\\d{16}$", message = "Card number must contain exactly 16 digits")
     private String cardNumber;
 
     @NotBlank

@@ -13,6 +13,7 @@ import lombok.*;
 @Builder
 public class CardCreateRequest {
     @NotBlank
+    @Pattern(regexp = "^\\d{16}$", message = "Card number must contain exactly 16 digits")
     private String cardNumber;
 
     @NotBlank

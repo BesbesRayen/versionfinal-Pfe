@@ -4,11 +4,11 @@ import { AppRoute, useAppNavigation } from "@/lib/app-navigation";
 import { colors, radii } from "@/lib/theme";
 
 const tabs = [
-  { route: "Home" as AppRoute, icon: "view-dashboard-outline", label: "Home" },
-  { route: "Shops" as AppRoute, icon: "shopping-outline", label: "Shop" },
-  { route: "Credit" as AppRoute, icon: "star-four-points-outline", label: "Credit" },
-  { route: "Installments" as AppRoute, icon: "chart-timeline-variant", label: "Pay" },
-  { route: "Profile" as AppRoute, icon: "account-circle-outline", label: "Me" },
+  { route: "Home" as AppRoute, icon: "view-dashboard-outline", label: "Accueil" },
+  { route: "Shops" as AppRoute, icon: "shopping-outline", label: "Boutiques" },
+  { route: "Credit" as AppRoute, icon: "star-four-points-outline", label: "Crédit" },
+  { route: "Installments" as AppRoute, icon: "chart-timeline-variant", label: "Payer" },
+  { route: "Profile" as AppRoute, icon: "account-circle-outline", label: "Profil" },
 ];
 
 const BottomNav = () => {

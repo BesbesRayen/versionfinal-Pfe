@@ -43,13 +43,6 @@ CREATE TABLE `admin_notifications` (
 -- Déchargement des données de la table `admin_notifications`
 --
 
-INSERT INTO `admin_notifications` (`id`, `created_at`, `message`, `order_id`, `is_read`, `title`, `transaction_id`, `type`, `updated_at`) VALUES
-(1, '2026-05-19 16:36:52.694719', 'Client Codex Verifier purchased Ashwagandha KSM-66 on credit. Transaction: ORD-C18564D3-3, installments: 3.', 1, b'0', 'New credit purchase', 'ORD-C18564D3-3', 'NEW_CREDIT_PURCHASE', '2026-05-19 16:36:52.694736'),
-(2, '2026-05-19 16:36:52.697441', 'Invoice FAC-20260519-1ACDB8 generated for transaction ORD-C18564D3-3', 1, b'0', 'Invoice generated', 'ORD-C18564D3-3', 'INVOICE_GENERATED', '2026-05-19 16:36:52.697457'),
-(3, '2026-05-20 00:01:00.375085', 'Client Rayen Hhe purchased Multivitamines on credit. Transaction: ORD-4F06AC41-7, installments: 3.', 2, b'0', 'New credit purchase', 'ORD-4F06AC41-7', 'NEW_CREDIT_PURCHASE', '2026-05-20 00:01:00.375100'),
-(4, '2026-05-20 00:01:00.379667', 'Invoice FAC-20260520-5A8205 generated for transaction ORD-4F06AC41-7', 2, b'0', 'Invoice generated', 'ORD-4F06AC41-7', 'INVOICE_GENERATED', '2026-05-20 00:01:00.379703'),
-(5, '2026-05-20 00:24:35.947363', 'Client Hama Hama purchased Ashwagandha KSM-66 on credit. Transaction: ORD-5051A0BA-B, installments: 9.', 3, b'0', 'New credit purchase', 'ORD-5051A0BA-B', 'NEW_CREDIT_PURCHASE', '2026-05-20 00:24:35.947399'),
-(6, '2026-05-20 00:24:35.951516', 'Invoice FAC-20260520-03F4A4 generated for transaction ORD-5051A0BA-B', 3, b'0', 'Invoice generated', 'ORD-5051A0BA-B', 'INVOICE_GENERATED', '2026-05-20 00:24:35.951583');
 
 -- --------------------------------------------------------
 
@@ -104,8 +97,6 @@ CREATE TABLE `cards` (
 -- Déchargement des données de la table `cards`
 --
 
-INSERT INTO `cards` (`id`, `card_number`, `cardholder_name`, `created_at`, `expiry_date`, `is_default`, `last4`, `status`, `type`, `updated_at`, `user_id`) VALUES
-(2, 'BWi6v+ZmB/L6e3YGLLP1JX4VRzrFloWxGpvFROapO+ZABZpdis6c7yPJo/A=', 'Rayen', '2026-05-19 23:57:17.709374', '01/26', b'1', '8848', 'ACTIVE', 'VISA', '2026-05-19 23:57:17.709414', 7);
 
 -- --------------------------------------------------------
 
@@ -133,17 +124,6 @@ CREATE TABLE `creadi_scores` (
 -- Déchargement des données de la table `creadi_scores`
 --
 
-INSERT INTO `creadi_scores` (`id`, `badge`, `behavior_score`, `children_score`, `created_at`, `kyc_score`, `level`, `marital_score`, `reason`, `risk`, `salary_score`, `total_score`, `user_id`) VALUES
-(20, NULL, 100, 50, '2026-05-19 22:50:40.778939', 0, 'HIGH_RISK', 50, 'Your score is at high risk level due to clean fraud record. Consider improving: identity not yet verified, no salary information provided.', 'CRITICAL', 0, 200, 7),
-(22, NULL, 100, 50, '2026-05-19 22:53:45.572997', 0, 'HIGH_RISK', 50, 'Your score is at high risk level due to clean fraud record. Consider improving: identity not yet verified, no salary information provided.', 'CRITICAL', 0, 200, 7),
-(24, NULL, 100, 50, '2026-05-19 23:07:53.711870', 0, 'HIGH_RISK', 50, 'Your score is at high risk level due to clean fraud record. Consider improving: identity not yet verified, no salary information provided.', 'CRITICAL', 0, 200, 7),
-(27, 'BRONZE', 200, 100, '2026-05-19 23:56:10.600485', 300, 'GOOD', 50, 'Your score is good due to verified identity, clean fraud record. Consider improving: no salary information provided.', 'MODERATE', 0, 650, 7),
-(28, 'SILVER', 200, 100, '2026-05-19 23:57:31.998560', 300, 'EXCELLENT', 50, 'Your score is excellent due to verified identity, stable salary, clean fraud record.', 'LOW', 200, 850, 7),
-(29, 'SILVER', 200, 100, '2026-05-19 23:58:09.497795', 300, 'EXCELLENT', 50, 'Your score is excellent due to verified identity, stable salary, clean fraud record.', 'LOW', 200, 850, 7),
-(30, 'SILVER', 200, 100, '2026-05-20 00:02:00.730981', 300, 'EXCELLENT', 50, 'Your score is excellent due to verified identity, stable salary, clean fraud record.', 'LOW', 200, 850, 7),
-(37, NULL, 100, 50, '2026-05-20 11:52:49.732898', 0, 'HIGH_RISK', 50, 'Your score is at high risk level due to clean fraud record. Consider improving: identity not yet verified, no salary information provided.', 'CRITICAL', 0, 200, 11),
-(39, 'SILVER', 200, 100, '2026-05-20 12:35:05.491169', 300, 'EXCELLENT', 50, 'Your score is excellent due to verified identity, stable salary, clean fraud record.', 'LOW', 200, 850, 7),
-(40, 'SILVER', 200, 100, '2026-05-20 12:35:56.684181', 300, 'EXCELLENT', 50, 'Your score is excellent due to verified identity, stable salary, clean fraud record.', 'LOW', 200, 850, 7);
 
 -- --------------------------------------------------------
 
@@ -171,8 +151,6 @@ CREATE TABLE `credit_requests` (
 -- Déchargement des données de la table `credit_requests`
 --
 
-INSERT INTO `credit_requests` (`id`, `created_at`, `down_payment`, `monthly_amount`, `number_of_installments`, `product_name`, `status`, `total_amount`, `user_id`, `financed_amount`, `interest_amount`, `interest_rate`, `total_payable`) VALUES
-(2, '2026-05-20 00:00:57.328822', 7.80, 10.40, 3, 'Multivitamines', 'APPROVED', 39.00, 7, 31.20, 0.00, 0.0000, 31.20);
 
 -- --------------------------------------------------------
 
@@ -195,8 +173,6 @@ CREATE TABLE `financial_profiles` (
 -- Déchargement des données de la table `financial_profiles`
 --
 
-INSERT INTO `financial_profiles` (`id`, `created_at`, `employment_status`, `monthly_salary`, `risk_level`, `salary_day`, `updated_at`, `user_id`) VALUES
-(2, '2026-05-19 23:57:31.971250', 'PART_TIME', 1500.00, 'MODERATE', 1, '2026-05-19 23:57:31.971275', 7);
 
 -- --------------------------------------------------------
 
@@ -218,10 +194,6 @@ CREATE TABLE `installments` (
 -- Déchargement des données de la table `installments`
 --
 
-INSERT INTO `installments` (`id`, `amount`, `due_date`, `paid_date`, `penalty`, `status`, `credit_request_id`) VALUES
-(4, 10.40, '2026-06-03', '2026-05-20 00:02:00.704886', 0.00, 'PAID', 2),
-(5, 10.40, '2026-07-03', '2026-05-20 12:35:05.468452', 0.00, 'PAID', 2),
-(6, 10.40, '2026-08-03', '2026-05-20 12:35:56.662523', 0.00, 'PAID', 2);
 
 -- --------------------------------------------------------
 
@@ -261,8 +233,6 @@ CREATE TABLE `invoices` (
 -- Déchargement des données de la table `invoices`
 --
 
-INSERT INTO `invoices` (`id`, `article_name`, `boutique_name`, `client_email`, `client_name`, `client_phone`, `created_at`, `invoice_number`, `number_of_installments`, `payment_type`, `purchase_date`, `statement`, `status`, `total_price`, `transaction_id`, `updated_at`, `order_id`, `user_id`, `financed_amount`, `interest_rate`, `merchant_margin_rate`, `merchant_payout_amount`, `platform_profit_amount`, `total_payable`, `interest_amount`) VALUES
-(2, 'Multivitamines', 'BioHerbs', 'rayenbesbes9@gmail.com', 'Rayen Hhe', '20409390', '2026-05-20 00:01:00.370417', 'FAC-20260520-5A8205', 3, 'CREDIT', '2026-05-20 00:01:00.350759', 'The application paid the boutique; the client must reimburse the application.', 'ISSUED', 39.00, 'ORD-4F06AC41-7', '2026-05-20 00:01:00.370442', 2, 7, 31.20, 0.0000, 0.0000, 39.00, 0.00, 31.20, 0.00);
 
 -- --------------------------------------------------------
 
@@ -284,9 +254,6 @@ CREATE TABLE `kyc_audit_logs` (
 -- Déchargement des données de la table `kyc_audit_logs`
 --
 
-INSERT INTO `kyc_audit_logs` (`id`, `admin_id`, `created_at`, `decision`, `previous_status`, `reason`, `kyc_document_id`) VALUES
-(1, 'admin', '2026-05-19 23:56:10.537336', 'VERIFIED', 'PENDING_MANUAL_REVIEW', 'Manual review approved by admin', 15),
-(2, 'admin', '2026-05-20 00:13:20.251181', 'VERIFIED', 'PENDING_MANUAL_REVIEW', 'Manual review approved by admin', 16);
 
 -- --------------------------------------------------------
 
@@ -342,10 +309,6 @@ CREATE TABLE `kyc_documents` (
 -- Déchargement des données de la table `kyc_documents`
 --
 
-INSERT INTO `kyc_documents` (`id`, `admin_comment`, `cin_back_url`, `cin_front_url`, `cin_number`, `created_at`, `face_match_score`, `ocr_result`, `selfie_url`, `status`, `user_id`, `cin_back_hash`, `cin_front_hash`, `cin_number_unique`, `didit_identity_id`, `extracted_identity_number`, `birth_date_matched`, `cin_matched`, `document_confidence`, `document_face_match_score`, `document_valid`, `extracted_birth_date`, `extracted_cin`, `extracted_first_name`, `extracted_gender`, `extracted_last_name`, `face_matched`, `first_name_matched`, `gender_matched`, `last_name_matched`, `liveness_passed`, `provider_reference`, `reviewed_at`, `submitted_cin`, `extracted_date_of_birth`, `fraud_risk_score`, `fraud_signals`, `liveness_score`, `provider_confidence`, `provider_reason`, `spoof_detected`) VALUES
-(15, 'Manual review approved by admin', '/api/files/kyc/7/cin_back.jpg', '/api/files/kyc/7/cin_front.jpg', NULL, '2026-05-19 23:07:51.959732', NULL, NULL, '/api/files/kyc/7/selfie.jpg', 'VERIFIED', 7, '87cbf3802f532d27eeb5cb112d17c41c7f4d686f167884600c009cfdaf35b8ae', '94bb1fd1c13536ceec1f08a941006f42116e995e2c3e13aca23951a904bd3536', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 60, 'failedAttempts=0;repeatedIdentity=false;rapidRetry=placeholder;deviceMismatch=placeholder;vpnProxy=placeholder', NULL, NULL, 'Didit API unavailable or rejected the request: 403 Forbidden on POST request for \"https://verification.didit.me/v3/id-verification/\": \"{\"error\":\"You don\'t have enough credits to perform this request. Please top up at https://business.didit.me\"}\"', NULL),
-(16, 'Manual review approved by admin', '/api/files/kyc/9/cin_back.jpg', '/api/files/kyc/9/cin_front.jpg', NULL, '2026-05-19 23:12:26.513176', NULL, NULL, '/api/files/kyc/9/selfie.jpg', 'VERIFIED', 9, 'a9128a1d550b48876e9c1fd7ad49425aa03a67aa39da10b22583f0a67667f5fe', 'a164f5700a4ff6662dbfe304a58db257acf6058749e72d48b299c5cf583de11d', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 60, 'failedAttempts=0;repeatedIdentity=false;rapidRetry=placeholder;deviceMismatch=placeholder;vpnProxy=placeholder', NULL, NULL, 'Didit API unavailable or rejected the request: 403 Forbidden on POST request for \"https://verification.didit.me/v3/id-verification/\": \"{\"error\":\"You don\'t have enough credits to perform this request. Please top up at https://business.didit.me\"}\"', NULL),
-(20, 'KYC provider unavailable. Manual review required.', '/api/files/kyc/11/cin_back.jpg', '/api/files/kyc/11/cin_front.jpg', NULL, '2026-05-20 12:44:40.421869', NULL, NULL, '/api/files/kyc/11/selfie.jpg', 'PENDING_MANUAL_REVIEW', 11, '35e061c2f6a8cf67632ee2dc479e8c78ecb9e9ec20fe8c59bf0cc10d45b86f1f', '141693df2a8f46ec55c6faace83eec3cce50313f7b3a157d9b9fc2da99b3c0d0', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 60, 'failedAttempts=0;repeatedIdentity=false;rapidRetry=placeholder;deviceMismatch=placeholder;vpnProxy=placeholder', NULL, NULL, 'Didit API unavailable or rejected the request: 403 Forbidden on POST request for \"https://verification.didit.me/v3/id-verification/\": \"{\"error\":\"You don\'t have enough credits to perform this request. Please top up at https://business.didit.me\"}\"', NULL);
 
 -- --------------------------------------------------------
 
@@ -376,7 +339,7 @@ CREATE TABLE `notifications` (
   `message` text COLLATE utf8mb4_unicode_ci,
   `is_read` bit(1) NOT NULL,
   `title` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `type` enum('CREDIT_APPROVED','CREDIT_REJECTED','INSTALLMENT_OVERDUE','KYC_VALIDATED','PAYMENT_CONFIRMED','PAYMENT_REMINDER') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` enum('KYC_VALIDATED','CREDIT_APPROVED','CREDIT_REJECTED','PAYMENT_REMINDER','PAYMENT_PENDING','PAYMENT_CONFIRMED','PAYMENT_FAILED','PAYMENT_REFUNDED','INSTALLMENT_OVERDUE') COLLATE utf8mb4_unicode_ci NOT NULL,
   `user_id` bigint NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -384,19 +347,6 @@ CREATE TABLE `notifications` (
 -- Déchargement des données de la table `notifications`
 --
 
-INSERT INTO `notifications` (`id`, `created_at`, `message`, `is_read`, `title`, `type`, `user_id`) VALUES
-(20, '2026-05-19 23:07:53.722564', 'Your identity verification needs manual review. Reason: KYC provider unavailable. Manual review required.', b'0', 'KYC Manual Review', 'KYC_VALIDATED', 7),
-(22, '2026-05-19 23:56:10.629525', 'Your identity has been verified successfully.', b'0', 'KYC verified', 'KYC_VALIDATED', 7),
-(23, '2026-05-19 23:57:17.727625', 'Your card **** **** **** 8848 has been linked successfully.', b'0', 'Payment method added', 'PAYMENT_CONFIRMED', 7),
-(24, '2026-05-19 23:57:32.008099', 'Your salary profile is now complete. You can request credit.', b'0', 'Financial profile updated', 'CREDIT_APPROVED', 7),
-(25, '2026-05-20 00:00:57.360334', 'Your credit request of 39.00 DT has been approved.', b'0', 'Credit Approved', 'CREDIT_APPROVED', 7),
-(26, '2026-05-20 00:01:00.384195', 'Your order for Multivitamines is active on 3 installments.', b'0', 'Credit purchase confirmed', 'CREDIT_APPROVED', 7),
-(27, '2026-05-20 00:02:00.740104', 'Payment of 10.4 DT confirmed. Ref: TXN-0E76B011', b'0', 'Payment Confirmed', 'PAYMENT_CONFIRMED', 7),
-(38, '2026-05-20 12:35:05.496711', 'Auto-payment of 10.40 TND processed for installment due 2026-07-03. Ref: AUTO-65805703', b'0', 'Autopay Successful', 'PAYMENT_CONFIRMED', 7),
-(39, '2026-05-20 12:35:56.691000', 'Auto-payment of 10.40 TND processed for installment due 2026-08-03. Ref: AUTO-41C2E229', b'0', 'Autopay Successful', 'PAYMENT_CONFIRMED', 7),
-(40, '2026-05-20 12:42:54.727373', 'Your identity verification needs manual review. Reason: KYC provider unavailable. Manual review required.', b'0', 'KYC Manual Review', 'KYC_VALIDATED', 11),
-(41, '2026-05-20 12:43:58.773400', 'Your identity verification needs manual review. Reason: KYC provider unavailable. Manual review required.', b'0', 'KYC Manual Review', 'KYC_VALIDATED', 11),
-(42, '2026-05-20 12:44:41.654017', 'Your identity verification needs manual review. Reason: KYC provider unavailable. Manual review required.', b'0', 'KYC Manual Review', 'KYC_VALIDATED', 11);
 
 -- --------------------------------------------------------
 
@@ -418,10 +368,6 @@ CREATE TABLE `payments` (
 -- Déchargement des données de la table `payments`
 --
 
-INSERT INTO `payments` (`id`, `amount`, `paid_at`, `payment_method`, `transaction_reference`, `installment_id`, `user_id`) VALUES
-(2, 10.40, '2026-05-20 00:02:00.692687', 'CARD', 'TXN-0E76B011', 4, 7),
-(12, 10.40, '2026-05-20 12:35:05.469623', 'AUTO_CARD', 'AUTO-65805703', 5, 7),
-(13, 10.40, '2026-05-20 12:35:56.663523', 'AUTO_CARD', 'AUTO-41C2E229', 6, 7);
 
 -- --------------------------------------------------------
 
@@ -462,8 +408,6 @@ CREATE TABLE `purchase_orders` (
 -- Déchargement des données de la table `purchase_orders`
 --
 
-INSERT INTO `purchase_orders` (`id`, `article_name`, `boutique_name`, `category`, `created_at`, `down_payment`, `financed_amount`, `installment_months`, `merchant_paid`, `merchant_paid_at`, `merchant_payout_reference`, `monthly_amount`, `payment_type`, `status`, `total_price`, `transaction_id`, `updated_at`, `article_id`, `credit_request_id`, `user_id`, `interest_amount`, `interest_rate`, `merchant_margin_rate`, `merchant_payout_amount`, `platform_profit_amount`, `total_payable`) VALUES
-(2, 'Multivitamines', 'BioHerbs', 'product', '2026-05-20 00:01:00.350759', 7.80, 31.20, 3, b'1', '2026-05-20 00:01:00.350049', 'MRCH-B6CB2856', 10.40, 'CREDIT', 'CREDIT_ACTIVE', 39.00, 'ORD-4F06AC41-7', '2026-05-20 00:01:00.350774', 3, 2, 7, 0.00, 0.0000, 0.0000, 39.00, 0.00, 31.20);
 
 -- --------------------------------------------------------
 
@@ -486,11 +430,6 @@ CREATE TABLE `transactions` (
 -- Déchargement des données de la table `transactions`
 --
 
-INSERT INTO `transactions` (`id`, `amount`, `created_at`, `description`, `reference`, `status`, `type`, `user_id`) VALUES
-(3, 31.20, '2026-05-20 00:01:00.356567', 'App paid boutique for article Multivitamines; client reimburses monthly', 'ORD-4F06AC41-7', 'SUCCESS', 'CREDIT_PURCHASE', 7),
-(4, 10.40, '2026-05-20 00:02:00.705874', 'Installment payment', 'TXN-0E76B011', 'SUCCESS', 'PAYMENT', 7),
-(7, 10.40, '2026-05-20 12:35:05.472524', 'Autopay - installment due 2026-07-03', 'AUTO-65805703', 'SUCCESS', 'PAYMENT', 7),
-(8, 10.40, '2026-05-20 12:35:56.672574', 'Autopay - installment due 2026-08-03', 'AUTO-41C2E229', 'SUCCESS', 'PAYMENT', 7);
 
 -- --------------------------------------------------------
 
@@ -540,10 +479,6 @@ CREATE TABLE `users` (
 -- Déchargement des données de la table `users`
 --
 
-INSERT INTO `users` (`id`, `address`, `autopay`, `created_at`, `email`, `first_name`, `kyc_failed_attempts`, `kyc_fraud_flag`, `kyc_provider`, `kyc_status`, `kyc_submitted_at`, `last_name`, `marital_status`, `monthly_salary`, `number_of_children`, `password_hash`, `password_reset_requested_at`, `password_reset_token_expiry`, `password_reset_token_hash`, `payment_score_modifier`, `phone`, `profession`, `profile_photo_url`, `updated_at`, `account_deleted`, `email_verification_attempts`, `email_verification_otp`, `email_verification_otp_expiry`, `email_verification_sent_at`, `email_verified`, `email_verified_at`, `birth_date`, `gender`, `kyc_verified`, `kyc_verified_at`) VALUES
-(7, 'Hdjs', b'0', '2026-05-19 22:50:40.775232', 'rayenbesbes9@gmail.com', 'Rayen', 0, b'0', 'DIDIT', 'VERIFIED', '2026-05-19 23:56:10.595409', 'Hhe', NULL, 1500, 0, '$2a$10$8A1CaB3DKZ7uvsyr3khwXuRgp3S9mPN4LrRgc0Kj11INx1dESy5Ne', NULL, NULL, NULL, 30, '20409390', NULL, NULL, '2026-05-20 12:36:10.796615', b'0', 0, NULL, NULL, '2026-05-19 22:50:40.782629', b'1', '2026-05-19 22:51:02.529000', NULL, NULL, NULL, NULL),
-(9, NULL, b'1', '2026-05-19 23:10:57.868159', 'deleted_9_1779277908922@deleted.invalid', 'Deleted', 0, b'0', 'DIDIT', 'VERIFIED', '2026-05-20 00:13:20.263013', 'User', NULL, 3000, 0, '$2a$10$wDdaAXLY0uOoNVBSyvtKceUzbJlh6gjte9XzkJFd3IVLTiDcQLvV2', NULL, NULL, NULL, 10, NULL, NULL, NULL, '2026-05-20 11:51:48.982032', b'1', 0, NULL, NULL, '2026-05-19 23:10:57.888158', b'1', '2026-05-19 23:11:14.842434', NULL, NULL, NULL, NULL),
-(11, 'Bjj', b'0', '2026-05-20 11:52:49.726259', 'vdirassacoding@gmail.com', 'Raslen', 0, b'0', 'DIDIT', 'PENDING_MANUAL_REVIEW', '2026-05-20 12:44:43.680974', 'Hh', NULL, NULL, 0, '$2a$10$eG6aO0et2wyasfXNPUG8zOdyVDcXEA7wS7osP4LoQJkZzHCMkLk0y', NULL, NULL, NULL, 0, '20409390', NULL, NULL, '2026-05-20 12:44:43.681374', b'0', 0, NULL, NULL, '2026-05-20 12:41:17.325255', b'1', '2026-05-20 12:41:39.101959', NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -563,9 +498,6 @@ CREATE TABLE `user_wallet` (
 -- Déchargement des données de la table `user_wallet`
 --
 
-INSERT INTO `user_wallet` (`id`, `balance`, `created_at`, `updated_at`, `user_id`) VALUES
-(7, 1968.80, '2026-05-19 22:50:40.777589', '2026-05-20 12:35:56.675216', 7),
-(11, 2000.00, '2026-05-20 11:52:49.730539', '2026-05-20 11:52:49.730556', 11);
 
 --
 -- Index pour les tables déchargées

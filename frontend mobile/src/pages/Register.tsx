@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +17,15 @@ import { register } from "@/lib/api";
 import { useAppNavigation } from "@/lib/app-navigation";
 import { colors, radii } from "@/lib/theme";
 
+const paymentRules = [
+  ["Payment Obligation", "All invoices, subscriptions, service fees, and amounts related to the use of the application must be paid on or before the due date shown in the app or invoice."],
+  ["Late Payment Penalty", "If payment is not completed on time, a late payment penalty of [X]% may be added to the outstanding amount, according to the payment rules applied in the application."],
+  ["Account Suspension", "In case of unpaid invoices or delayed payment, the company reserves the right to temporarily suspend or restrict access to the application until the full payment is received."],
+  ["Payment Reminders", "The client may receive one or more reminders by notification, email, phone, or any other communication method available in the application."],
+  ["Legal Recovery", "If payment is still not completed after reminders, the company reserves the right to transfer the case to a lawyer, debt collection service, or any competent legal authority."],
+  ["Additional Costs", "Any legal, administrative, recovery, lawyer, or collection fees caused by non-payment may be charged to the client, where permitted by law."],
+] as const;
+
 const Register = () => {
   const { navigate } = useAppNavigation();
 
@@ -29,6 +39,9 @@ const Register = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [showTerms, setShowTerms] = useState(false);
+  const [termsConfirmed, setTermsConfirmed] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const clearError = () => {
     if (errorMessage) setErrorMessage("");
@@ -50,6 +63,12 @@ const Register = () => {
       return;
     }
 
+    if (!termsAccepted) {
+      setErrorMessage("Veuillez lire et accepter les conditions de paiement.");
+      setShowTerms(true);
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage("");
 
@@ -59,6 +78,7 @@ const Register = () => {
         lastName: lastName.trim(),
         email: email.trim(),
         password,
+        termsAccepted: true,
         address: address.trim() || undefined,
       });
 
@@ -222,12 +242,30 @@ const Register = () => {
               </View>
             )}
 
+            <View style={styles.termsSummary}>
+              <View style={styles.termsSummaryText}>
+                <Text style={styles.termsSummaryTitle}>Client Terms &amp; Payment Rules</Text>
+                <Text style={styles.termsSummaryCopy}>
+                  Read and accept the payment rules before creating your account.
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setTermsConfirmed(termsAccepted);
+                  setShowTerms(true);
+                }}
+                style={[styles.termsLink, termsAccepted && styles.termsLinkAccepted]}
+              >
+                <Text style={styles.termsLinkText}>{termsAccepted ? "Accepted" : "Read terms"}</Text>
+              </Pressable>
+            </View>
+
             <View style={styles.ctaBlock}>
               <TouchableOpacity
-                style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+                style={[styles.primaryButton, (isSubmitting || !termsAccepted) && styles.buttonDisabled]}
                 activeOpacity={0.9}
                 onPress={handleRegister}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !termsAccepted}
               >
                 <Text style={styles.primaryButtonText}>{isSubmitting ? "Creation..." : "Creer mon compte"}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={19} color={colors.white} />
@@ -242,6 +280,74 @@ const Register = () => {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={showTerms} transparent animationType="slide" onRequestClose={() => setShowTerms(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderText}>
+                <Text style={styles.modalTitle}>Client Terms &amp; Payment Rules</Text>
+                <Text style={styles.modalIntro}>
+                  Before creating an account and using the application, please read and accept the following terms.
+                </Text>
+              </View>
+              <Pressable onPress={() => setShowTerms(false)} style={styles.modalClose}>
+                <MaterialCommunityIcons name="close" size={22} color={colors.white} />
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.rulesScroll} contentContainerStyle={styles.rulesContent}>
+              {paymentRules.map(([title, body], index) => (
+                <View key={title} style={styles.ruleBlock}>
+                  <Text style={styles.ruleTitle}>{index + 1}. {title}</Text>
+                  <Text style={styles.ruleBody}>{body}</Text>
+                </View>
+              ))}
+
+              <View style={styles.confirmationBlock}>
+                <Text style={styles.confirmationTitle}>Confirmation</Text>
+                <Pressable
+                  onPress={() => setTermsConfirmed((value) => !value)}
+                  style={styles.confirmationRow}
+                >
+                  <MaterialCommunityIcons
+                    name={termsConfirmed ? "checkbox-marked" : "checkbox-blank-outline"}
+                    size={24}
+                    color={termsConfirmed ? "#A99CFF" : colors.mutedForeground}
+                  />
+                  <Text style={styles.confirmationText}>
+                    I have read, understood, and agree to the Client Terms &amp; Payment Rules.
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => {
+                  setTermsConfirmed(false);
+                  setTermsAccepted(false);
+                  setShowTerms(false);
+                }}
+                style={styles.refuseButton}
+              >
+                <Text style={styles.refuseButtonText}>Refuse</Text>
+              </Pressable>
+              <Pressable
+                disabled={!termsConfirmed}
+                onPress={() => {
+                  setTermsAccepted(true);
+                  setShowTerms(false);
+                  clearError();
+                }}
+                style={[styles.acceptButton, !termsConfirmed && styles.buttonDisabled]}
+              >
+                <Text style={styles.acceptButtonText}>Accept</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -473,6 +579,45 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: "800",
   },
+  termsSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 20,
+    padding: 13,
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+  },
+  termsSummaryText: {
+    flex: 1,
+  },
+  termsSummaryTitle: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  termsSummaryCopy: {
+    marginTop: 4,
+    color: colors.mutedForeground,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "600",
+  },
+  termsLink: {
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    backgroundColor: "rgba(139, 92, 246, 0.22)",
+  },
+  termsLinkAccepted: {
+    backgroundColor: "rgba(34, 197, 94, 0.18)",
+  },
+  termsLinkText: {
+    color: "#E8DDFF",
+    fontSize: 11,
+    fontWeight: "900",
+  },
   ctaBlock: {
     gap: 10,
   },
@@ -518,6 +663,133 @@ const styles = StyleSheet.create({
   },
   footerAction: {
     color: "#E8DDFF",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.76)",
+  },
+  modalCard: {
+    maxHeight: "92%",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    backgroundColor: "#11162A",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.14)",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.10)",
+  },
+  modalHeaderText: {
+    flex: 1,
+  },
+  modalTitle: {
+    color: colors.white,
+    fontSize: 19,
+    fontWeight: "900",
+  },
+  modalIntro: {
+    marginTop: 6,
+    color: colors.mutedForeground,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
+  modalClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  rulesScroll: {
+    flexShrink: 1,
+  },
+  rulesContent: {
+    padding: 20,
+    gap: 17,
+  },
+  ruleBlock: {
+    gap: 5,
+  },
+  ruleTitle: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  ruleBody: {
+    color: "#C7CCE0",
+    fontSize: 12,
+    lineHeight: 19,
+    fontWeight: "600",
+  },
+  confirmationBlock: {
+    gap: 10,
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.10)",
+  },
+  confirmationTitle: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  confirmationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.11)",
+  },
+  confirmationText: {
+    flex: 1,
+    color: "#E2E5F2",
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "700",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255, 255, 255, 0.10)",
+  },
+  refuseButton: {
+    flex: 1,
+    minHeight: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.16)",
+  },
+  refuseButtonText: {
+    color: "#E2E5F2",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  acceptButton: {
+    flex: 1,
+    minHeight: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 18,
+    backgroundColor: "#8B5CF6",
+  },
+  acceptButtonText: {
+    color: colors.white,
     fontSize: 14,
     fontWeight: "900",
   },

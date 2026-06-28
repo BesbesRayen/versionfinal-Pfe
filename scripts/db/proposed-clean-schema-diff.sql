@@ -165,7 +165,6 @@ ALTER TABLE kyc_documents
 -- Remove obsolete table references from:
 -- - scripts/db/reset-mysql.sql
 -- - scripts/db/reset-postgresql.sql
--- - creadiTn/src/main/java/.../DevDatabaseResetService.java
 --
 -- Obsolete table names:
 -- - verification_tokens: replaced by email verification OTP columns on users

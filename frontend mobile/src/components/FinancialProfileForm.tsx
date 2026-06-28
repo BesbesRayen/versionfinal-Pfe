@@ -9,6 +9,7 @@ import {
   saveFinancialProfile,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { estimateCreditLimit } from "@/lib/credit-limit-estimate";
 import { colors, radii } from "@/lib/theme";
 
 const EMPLOYMENT_OPTIONS: { value: EmploymentStatus; label: string; icon: string }[] = [
@@ -117,7 +118,7 @@ const FinancialProfileForm = ({
   const dueDate = `${Math.min(28, salaryDay + 2)} du mois`;
   const preview = useMemo(() => {
     if (!validSalary) return "A calculer";
-    return `${Math.round(Math.min(2000, salaryNumber * 0.55)).toLocaleString("fr-TN")} DT`;
+    return `${estimateCreditLimit(salaryNumber).toLocaleString("fr-TN")} DT`;
   }, [salaryNumber, validSalary]);
 
   const handleSave = async () => {

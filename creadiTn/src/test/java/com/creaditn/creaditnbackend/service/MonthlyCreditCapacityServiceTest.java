@@ -85,6 +85,49 @@ class MonthlyCreditCapacityServiceTest {
     }
 
     @Test
+    void sumsEveryTrancheInTheSelectedMonthAndRestoresCapacityAfterPayment() {
+        YearMonth target = YearMonth.of(2026, 6);
+        LocalDate calculationDate = LocalDate.of(2026, 6, 28);
+        monthlyLimit(14L, "2808.20");
+        Installment first = installment(
+                target,
+                "34.40",
+                InstallmentStatus.OVERDUE,
+                LocalDate.of(2026, 6, 27)
+        );
+        first.setPenalty(new BigDecimal("1.72"));
+        Installment second = installment(
+                target,
+                "34.40",
+                InstallmentStatus.OVERDUE,
+                LocalDate.of(2026, 6, 27)
+        );
+        second.setPenalty(new BigDecimal("1.72"));
+        when(installmentRepository.findByCreditRequestUserId(14L))
+                .thenReturn(List.of(first, second));
+
+        MonthlyCreditCapacityService.MonthlyCapacitySnapshot beforePayment =
+                service.getSnapshot(14L, target, calculationDate);
+
+        assertThat(beforePayment.committed()).isEqualByComparingTo("72.24");
+        assertThat(beforePayment.available()).isEqualByComparingTo("2735.96");
+
+        first.setStatus(InstallmentStatus.PAID);
+        MonthlyCreditCapacityService.MonthlyCapacitySnapshot afterFirstPayment =
+                service.getSnapshot(14L, target, calculationDate);
+
+        assertThat(afterFirstPayment.committed()).isEqualByComparingTo("36.12");
+        assertThat(afterFirstPayment.available()).isEqualByComparingTo("2772.08");
+
+        second.setStatus(InstallmentStatus.PAID);
+        MonthlyCreditCapacityService.MonthlyCapacitySnapshot afterAllPayments =
+                service.getSnapshot(14L, target, calculationDate);
+
+        assertThat(afterAllPayments.committed()).isEqualByComparingTo("0.00");
+        assertThat(afterAllPayments.available()).isEqualByComparingTo("2808.20");
+    }
+
+    @Test
     void monthlyCreditResetsAndSubtractsOnlyTheUnpaidTrancheOfThatMonth() {
         YearMonth currentMonth = YearMonth.now();
         YearMonth nextMonth = currentMonth.plusMonths(1);
@@ -256,6 +299,36 @@ class MonthlyCreditCapacityServiceTest {
         assertThat(snapshot.available()).isEqualByComparingTo("2060.27");
     }
 
+    @Test
+    void downPaymentDoesNotConsumeCreditCapacity() {
+        YearMonth purchaseMonth = YearMonth.of(2026, 6);
+        YearMonth firstDueMonth = purchaseMonth.plusMonths(1);
+        monthlyLimit(13L, "2000.00");
+        CreditRequest credit = CreditRequest.builder()
+                .id(90L)
+                .totalAmount(new BigDecimal("85.00"))
+                .downPayment(new BigDecimal("17.00"))
+                .numberOfInstallments(3)
+                .build();
+        List<Installment> installments = List.of(
+                installment(credit, LocalDate.of(2026, 7, 27), "22.66", InstallmentStatus.PENDING),
+                installment(credit, LocalDate.of(2026, 8, 27), "22.66", InstallmentStatus.PENDING),
+                installment(credit, LocalDate.of(2026, 9, 27), "22.68", InstallmentStatus.PENDING)
+        );
+        when(installmentRepository.findByCreditRequestUserId(13L)).thenReturn(installments);
+
+        MonthlyCreditCapacityService.MonthlyCapacitySnapshot purchaseMonthSnapshot = service.getSnapshot(
+                13L,
+                purchaseMonth,
+                LocalDate.of(2026, 6, 15)
+        );
+
+        assertThat(purchaseMonthSnapshot.committed()).isEqualByComparingTo("0.00");
+        assertThat(purchaseMonthSnapshot.available()).isEqualByComparingTo("2000.00");
+        assertThat(service.getSnapshot(13L, firstDueMonth, LocalDate.of(2026, 7, 1)).committed())
+                .isEqualByComparingTo("22.66");
+    }
+
     private Installment installment(YearMonth month, String amount, InstallmentStatus status) {
         return installment(month, amount, status, month.atDay(10));
     }
@@ -268,6 +341,21 @@ class MonthlyCreditCapacityServiceTest {
     ) {
         return Installment.builder()
                 .creditRequest(CreditRequest.builder().id(10L).build())
+                .dueDate(dueDate)
+                .amount(new BigDecimal(amount))
+                .penalty(BigDecimal.ZERO)
+                .status(status)
+                .build();
+    }
+
+    private Installment installment(
+            CreditRequest credit,
+            LocalDate dueDate,
+            String amount,
+            InstallmentStatus status
+    ) {
+        return Installment.builder()
+                .creditRequest(credit)
                 .dueDate(dueDate)
                 .amount(new BigDecimal(amount))
                 .penalty(BigDecimal.ZERO)

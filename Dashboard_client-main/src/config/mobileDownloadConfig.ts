@@ -9,7 +9,7 @@ const isMobileDownloadMode = (value: string | undefined): value is MobileDownloa
 export const mobileDownloadConfig = {
   mode: isMobileDownloadMode(configuredMode) ? configuredMode : 'expo-go',
 
-  expoGoUrl: process.env.NEXT_PUBLIC_CREDITTN_EXPO_GO_URL ?? 'exp://192.168.1.167:8084',
+  expoGoUrl: process.env.NEXT_PUBLIC_CREDITTN_EXPO_GO_URL ?? '',
   expoGoAndroidInstallUrl:
     process.env.NEXT_PUBLIC_EXPO_GO_ANDROID_URL
     ?? 'https://play.google.com/store/apps/details?id=host.exp.exponent',

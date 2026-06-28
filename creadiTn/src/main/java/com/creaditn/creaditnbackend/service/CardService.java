@@ -121,11 +121,8 @@ public class CardService {
                             CardType type, boolean shouldBeDefault) {
         Long userId = user.getId();
         String sanitizedNumber = cardNumber.replaceAll("\\s+", "");
-        if (!sanitizedNumber.matches("^\\d{13,19}$")) {
-            throw new BadRequestException("Card number must contain 13 to 19 digits");
-        }
-        if (!isValidLuhn(sanitizedNumber)) {
-            throw new BadRequestException("Card number is invalid");
+        if (!sanitizedNumber.matches("^\\d{16}$")) {
+            throw new BadRequestException("Card number must contain exactly 16 digits");
         }
         validateExpiryDate(expiryDate);
 
@@ -188,25 +185,6 @@ public class CardService {
         unsetCurrentDefault(userId);
         card.setIsDefault(true);
         cardRepository.save(card);
-
-        return toDto(card);
-    }
-
-    @Transactional
-    public CardDto blockCard(Long userId, Long cardId) {
-        Card card = findUserCard(userId, cardId);
-        card.setStatus(CardStatus.BLOCKED);
-        card.setIsDefault(false);
-        cardRepository.save(card);
-
-        // Ensure the user still has one default card when possible
-        cardRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .filter(c -> c.getStatus() == CardStatus.ACTIVE)
-                .findFirst()
-                .ifPresent(activeCard -> {
-                    activeCard.setIsDefault(true);
-                    cardRepository.save(activeCard);
-                });
 
         return toDto(card);
     }
@@ -298,23 +276,6 @@ public class CardService {
         if (hasProcessingTransaction) {
             throw new BadRequestException("You cannot change this card while a transaction is processing.");
         }
-    }
-
-    private boolean isValidLuhn(String cardNumber) {
-        int sum = 0;
-        boolean doubleDigit = false;
-        for (int i = cardNumber.length() - 1; i >= 0; i--) {
-            int digit = Character.digit(cardNumber.charAt(i), 10);
-            if (doubleDigit) {
-                digit *= 2;
-                if (digit > 9) {
-                    digit -= 9;
-                }
-            }
-            sum += digit;
-            doubleDigit = !doubleDigit;
-        }
-        return sum % 10 == 0;
     }
 
     private void ensureUserExists(Long userId) {

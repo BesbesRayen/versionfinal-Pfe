@@ -82,6 +82,7 @@ public class SecurityConfig {
                 "http://localhost:3000",
                 "http://localhost:3001",
                 "http://localhost:3002",
+                "http://localhost:8083",
                 "http://localhost:8081",
                 "http://localhost:19006",
                 "exp://*",

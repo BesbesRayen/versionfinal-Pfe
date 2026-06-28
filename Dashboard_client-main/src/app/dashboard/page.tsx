@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import MobileAccessModal from '@/components/MobileAccessModal';
 import { useSocket } from '@/lib/useSocket';
+import { translateNotificationMessage, translateNotificationTitle } from '@/lib/notification-fr';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8082';
 const POLL_INTERVAL = 30_000;
@@ -570,7 +571,7 @@ export default function DashboardPage() {
                   onClick={() => void markAllNotificationsRead()}
                   className="rounded-xl px-2.5 py-1.5 text-[10px] font-black text-indigo-200 transition-colors hover:bg-indigo-500/20"
                 >
-                  Tout lire
+                  Tout marquer comme lu
                 </button>
               )}
             </div>
@@ -595,8 +596,8 @@ export default function DashboardPage() {
                 >
                   <div className={`mt-2 h-2 w-2 flex-shrink-0 rounded-full ${!notif.read ? tone.dot : 'bg-gray-600'}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-white">{notif.title}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-gray-400">{notif.message}</p>
+                    <p className="text-sm font-bold text-white">{translateNotificationTitle(notif.title)}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-gray-400">{translateNotificationMessage(notif.message)}</p>
                     <p className="mt-1 text-[10px] text-gray-600">
                       {new Date(notif.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </p>
@@ -641,7 +642,7 @@ export default function DashboardPage() {
               )}
               <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold ${socketConnected ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-white/60'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${socketConnected ? 'bg-emerald-400 animate-pulse' : 'bg-white/40'}`} />
-                {socketConnected ? 'Live' : socketReconnecting ? 'Reconnexion...' : 'Offline'}
+                {socketConnected ? 'En direct' : socketReconnecting ? 'Reconnexion...' : 'Hors ligne'}
               </div>
               <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold ${verified ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'}`}>
                 {verified ? <CheckCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}

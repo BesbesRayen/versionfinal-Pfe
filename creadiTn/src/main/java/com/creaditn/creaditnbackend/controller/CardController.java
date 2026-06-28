@@ -47,14 +47,6 @@ public class CardController {
         return ResponseEntity.ok(cardService.setDefaultCard(userId, request.getCardId()));
     }
 
-    @DeleteMapping("/block")
-    public ResponseEntity<CardDto> block(
-            @RequestParam Long userId,
-            @Valid @RequestBody BlockCardRequest request
-    ) {
-        return ResponseEntity.ok(cardService.blockCard(userId, request.getCardId()));
-    }
-
     @PutMapping("/{cardId}/replace")
     public ResponseEntity<CardDto> replaceCard(
             @RequestParam Long userId,
@@ -103,13 +95,6 @@ public class CardController {
         return ResponseEntity.ok(cardService.setDefaultCard(userId, cardId));
     }
 
-    @PutMapping("/{cardId}/block")
-    public ResponseEntity<CardDto> blockLegacy(
-            @RequestParam Long userId,
-            @PathVariable Long cardId
-    ) {
-        return ResponseEntity.ok(cardService.blockCard(userId, cardId));
-    }
 }
 
 // Helper DTOs for request body binding
@@ -117,12 +102,5 @@ public class CardController {
 @lombok.NoArgsConstructor
 @lombok.AllArgsConstructor
 class SetDefaultCardRequest {
-    private Long cardId;
-}
-
-@lombok.Data
-@lombok.NoArgsConstructor
-@lombok.AllArgsConstructor
-class BlockCardRequest {
     private Long cardId;
 }

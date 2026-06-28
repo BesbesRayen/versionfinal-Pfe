@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import {
+  X,
   CreditCard,
   Mail,
   Lock,
@@ -13,6 +14,15 @@ import {
   Check,
   Phone,
 } from 'lucide-react';
+
+const paymentRules = [
+  ['Payment Obligation', 'All invoices, subscriptions, service fees, and amounts related to the use of the application must be paid on or before the due date shown in the app or invoice.'],
+  ['Late Payment Penalty', 'If payment is not completed on time, a late payment penalty of [X]% may be added to the outstanding amount, according to the payment rules applied in the application.'],
+  ['Account Suspension', 'In case of unpaid invoices or delayed payment, the company reserves the right to temporarily suspend or restrict access to the application until the full payment is received.'],
+  ['Payment Reminders', 'The client may receive one or more reminders by notification, email, phone, or any other communication method available in the application.'],
+  ['Legal Recovery', 'If payment is still not completed after reminders, the company reserves the right to transfer the case to a lawyer, debt collection service, or any competent legal authority.'],
+  ['Additional Costs', 'Any legal, administrative, recovery, lawyer, or collection fees caused by non-payment may be charged to the client, where permitted by law.'],
+] as const;
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -27,6 +37,8 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [termsConfirmed, setTermsConfirmed] = useState(false);
 
   const passwordRequirements = [
     { label: '8 caractères minimum', met: formData.password.length >= 8 },
@@ -65,6 +77,7 @@ export default function RegisterPage() {
           email: formData.email,
           phone: formData.phone,
           password: formData.password,
+          termsAccepted: true,
         }),
       });
 
@@ -266,24 +279,26 @@ export default function RegisterPage() {
             )}
 
             {/* Terms */}
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={acceptTerms}
-                onChange={(e) => setAcceptTerms(e.target.checked)}
-                className="w-4 h-4 mt-0.5 text-indigo-400 rounded border-white/10 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-400">
-                J&apos;accepte les{' '}
-                <a href="#" className="text-indigo-400 hover:text-indigo-400 font-medium">
-                  conditions d&apos;utilisation
-                </a>{' '}
-                et la{' '}
-                <a href="#" className="text-indigo-400 hover:text-indigo-400 font-medium">
-                  politique de confidentialité
-                </a>
-              </span>
-            </label>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-white">Client Terms &amp; Payment Rules</p>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Read and accept the payment rules before creating your account.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTermsConfirmed(acceptTerms);
+                    setShowTerms(true);
+                  }}
+                  className="shrink-0 text-sm font-semibold text-indigo-400 hover:text-indigo-300"
+                >
+                  {acceptTerms ? 'Accepted' : 'Read terms'}
+                </button>
+              </div>
+            </div>
 
             <button
               type="submit"
@@ -316,6 +331,86 @@ export default function RegisterPage() {
           </p>
         </div>
       </div>
+
+      {showTerms && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payment-terms-title"
+            className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#11162a] shadow-2xl"
+          >
+            <div className="flex items-start justify-between border-b border-white/10 p-5">
+              <div>
+                <h2 id="payment-terms-title" className="text-xl font-bold text-white">
+                  Client Terms &amp; Payment Rules
+                </h2>
+                <p className="mt-1 text-sm text-gray-400">
+                  Before creating an account and using the application, please read and accept the following terms.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTerms(false)}
+                aria-label="Close terms"
+                className="rounded-lg p-2 text-gray-400 hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto p-5">
+              {paymentRules.map(([title, body], index) => (
+                <div key={title}>
+                  <h3 className="font-semibold text-white">{index + 1}. {title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-gray-300">{body}</p>
+                </div>
+              ))}
+
+              <div className="border-t border-white/10 pt-5">
+                <h3 className="font-semibold text-white">Confirmation</h3>
+                <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-4">
+                  <input
+                    type="checkbox"
+                    checked={termsConfirmed}
+                    onChange={(event) => setTermsConfirmed(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 text-indigo-500 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm leading-5 text-gray-200">
+                    I have read, understood, and agree to the Client Terms &amp; Payment Rules.
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-3 border-t border-white/10 p-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setTermsConfirmed(false);
+                  setAcceptTerms(false);
+                  setShowTerms(false);
+                }}
+                className="flex-1 rounded-xl border border-white/15 px-4 py-3 font-semibold text-gray-200 hover:bg-white/5"
+              >
+                Refuse
+              </button>
+              <button
+                type="button"
+                disabled={!termsConfirmed}
+                onClick={() => {
+                  setAcceptTerms(true);
+                  setShowTerms(false);
+                  setError('');
+                }}
+                className="flex-1 rounded-xl bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

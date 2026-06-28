@@ -198,7 +198,7 @@ export default function SupportPage() {
                 <ContactInfo
                   icon={MapPin}
                   title="Adresse"
-                  value="Rue du Lac Biwa, Les Berges du Lac"
+                  value="Rue de lac"
                   meta="1053 Tunis, Tunisie"
                 />
                 <ContactInfo

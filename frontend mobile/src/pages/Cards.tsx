@@ -29,6 +29,11 @@ import {
   setDefaultCard,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import {
+  formatCardNumber,
+  normalizeCardNumber,
+  validateCardNumber,
+} from "@/lib/card-validation";
 import { colors, radii } from "@/lib/theme";
 
 // Live card preview shown while typing in the add-card modal.
@@ -157,21 +162,6 @@ const AnimatedCardWidget = ({ card }: { card: Card }) => {
   );
 };
 
-const isValidLuhn = (value: string) => {
-  let sum = 0;
-  let shouldDouble = false;
-  for (let index = value.length - 1; index >= 0; index -= 1) {
-    let digit = Number(value[index]);
-    if (shouldDouble) {
-      digit *= 2;
-      if (digit > 9) digit -= 9;
-    }
-    sum += digit;
-    shouldDouble = !shouldDouble;
-  }
-  return value.length > 0 && sum % 10 === 0;
-};
-
 const ValidationLine = ({ state, text }: { state: "success" | "warning" | "error"; text: string }) => {
   const color = state === "success" ? colors.success : state === "warning" ? colors.warning : colors.error;
   return (
@@ -245,12 +235,6 @@ const Cards = () => {
     if (mm < 1 || mm > 12) return "Invalid month - must be 01 to 12";
     if (yy < currentYY) return `Card expired - year must be ${currentYY} or later`;
     if (yy === currentYY && mm < currentMonth) return "Card expiry date must be in the future";
-    return null;
-  };
-
-  const validateCardNumber = (digits: string): string | null => {
-    if (!/^\d{13,19}$/.test(digits)) return "Card number must contain 13 to 19 digits";
-    if (!isValidLuhn(digits)) return "Card number is invalid";
     return null;
   };
 
@@ -395,7 +379,7 @@ const Cards = () => {
     setShowAddModal(true);
   };
 
-  const cardDisplay = cardDigits.replace(/(\d{4})(?=\d)/g, "$1 ");
+  const cardDisplay = formatCardNumber(cardDigits);
   // Slash is added only when 3+ digits are present (not at exactly 2).
   // This avoids the "stuck" state where backspace removes the auto-slash
   // but raw digit count stays the same, causing stale deletion detection.
@@ -405,7 +389,7 @@ const Cards = () => {
 
   const handleCardChange = (text: string) => {
     setErrorMessage("");
-    const raw = text.replace(/\D/g, "").slice(0, 19);
+    const raw = normalizeCardNumber(text);
     setCardDigits(raw);
     if (raw.length === 16) expiryRef.current?.focus();
   };
@@ -538,7 +522,7 @@ const Cards = () => {
                     keyboardType="number-pad"
                     value={cardDisplay}
                     onChangeText={handleCardChange}
-                    maxLength={23}
+                    maxLength={19}
                     returnKeyType="next"
                       onSubmitEditing={() => expiryRef.current?.focus()}
                       blurOnSubmit={false}

@@ -29,6 +29,12 @@ import {
   getCards,
   checkHasFinancialProfile,
 } from "@/lib/api";
+import {
+  formatCardNumber,
+  normalizeCardNumber,
+  validateCardExpiry,
+  validateCardNumber,
+} from "@/lib/card-validation";
 import { colors } from "@/lib/theme";
 
 const { width: SW, height: SH } = Dimensions.get("window");
@@ -311,13 +317,19 @@ const Step2 = ({
   const [name, setName] = useState("");
   const [cvv, setCvv] = useState("");
 
-  const fmtNum = (t: string) => t.replace(/\D/g, "").slice(0, 16).replace(/(.{4})/g, "$1 ").trim();
   const fmtExp = (t: string) => { const d = t.replace(/\D/g, "").slice(0, 4); return d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d; };
-  const clean = num.replace(/\s/g, "");
-  const valid = clean.length === 16 && expiry.length === 5 && name.trim().length > 1 && cvv.length >= 3;
+  const clean = normalizeCardNumber(num);
+  const cardError = clean.length > 0 ? validateCardNumber(clean) : null;
+  const expiryError = expiry.length > 0 ? validateCardExpiry(expiry) : null;
+  const valid = clean.length === 16
+    && !cardError
+    && expiry.length === 5
+    && !expiryError
+    && name.trim().length > 1
+    && cvv.length === 3;
 
   const displayNum = clean.length > 0
-    ? (clean + "0000000000000000").slice(0, 16).replace(/(.{4})/g, "$1 ").trim()
+    ? formatCardNumber(clean)
     : "---- ---- ---- ----";
 
   const submit = async () => {
@@ -363,12 +375,14 @@ const Step2 = ({
       <View style={s2.fields}>
         <View>
           <Text style={s2.fieldLabel}>Numero de carte</Text>
-          <TextInput style={s2.input} value={num} onChangeText={(t) => setNum(fmtNum(t))} placeholder="1234 5678 9012 3456" placeholderTextColor={G4} keyboardType="numeric" maxLength={19} />
+          <TextInput style={[s2.input, cardError && s2.inputError]} value={num} onChangeText={(t) => setNum(formatCardNumber(t))} placeholder="1234 5678 9012 3456" placeholderTextColor={G4} keyboardType="numeric" maxLength={19} />
+          {cardError && <Text style={s2.errorText}>{cardError}</Text>}
         </View>
         <View style={s2.row}>
           <View style={{ flex: 1 }}>
             <Text style={s2.fieldLabel}>Expiration</Text>
-            <TextInput style={s2.input} value={expiry} onChangeText={(t) => setExpiry(fmtExp(t))} placeholder="MM/AA" placeholderTextColor={G4} keyboardType="numeric" maxLength={5} />
+            <TextInput style={[s2.input, expiryError && s2.inputError]} value={expiry} onChangeText={(t) => setExpiry(fmtExp(t))} placeholder="MM/AA" placeholderTextColor={G4} keyboardType="numeric" maxLength={5} />
+            {expiryError && <Text style={s2.errorText}>{expiryError}</Text>}
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s2.fieldLabel}>CVV</Text>
@@ -405,6 +419,8 @@ const s2 = StyleSheet.create({
   fields: { gap: 12 },
   fieldLabel: { fontSize: 11, fontWeight: "700", color: G7, marginBottom: 5, letterSpacing: 0.5 },
   input: { height: 50, borderRadius: 14, borderWidth: 1.5, borderColor: G3, paddingHorizontal: 14, fontSize: 15, color: G9, backgroundColor: G1 },
+  inputError: { borderColor: RE },
+  errorText: { color: RE, fontSize: 11, fontWeight: "600", marginTop: 5 },
   row: { flexDirection: "row", gap: 12 },
   btn: { backgroundColor: P, borderRadius: 14, paddingVertical: 15, alignItems: "center", justifyContent: "center", shadowColor: P, shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   btnOff: { opacity: 0.45 },
@@ -511,7 +527,6 @@ const KycVerification = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<KycVerificationResult | null>(null);
-  const [kycSuccess, setKycSuccess] = useState(false);
   const [identityUsed, setIdentityUsed] = useState(false);
   const [alreadyApproved, setAlreadyApproved] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -612,12 +627,6 @@ const KycVerification = () => {
     return () => clearTimeout(t);
   }, [step, data.cinFront, data.cinBack, data.selfie, loading, result, error, submit1]);
 
-  useEffect(() => {
-    if (!kycSuccess) return;
-    const t = setTimeout(() => navigate("Home"), 2500);
-    return () => clearTimeout(t);
-  }, [kycSuccess, navigate]);
-
   /**
    * Soft retry — keeps all uploaded photos & CIN number, just clears the
    * error/result state and re-enables auto-submission. Used for transient
@@ -657,13 +666,6 @@ const KycVerification = () => {
         ) : (
           <RejectedScreen result={result} onRetry={fullRetry} onDone={() => navigate("Profile")} />
         )}
-      </SafeAreaView>
-    );
-  }
-  if (kycSuccess) {
-    return (
-      <SafeAreaView style={m.safe}>
-        <SuccessScreen onDone={() => navigate("Home")} />
       </SafeAreaView>
     );
   }
@@ -746,7 +748,7 @@ const KycVerification = () => {
           {step === 3 && (
             <FinancialProfileForm
               submitLabel="Terminer la verification"
-              onSaved={() => setKycSuccess(true)}
+              onSaved={() => navigate("Home")}
             />
           )}
         </ScrollView>
